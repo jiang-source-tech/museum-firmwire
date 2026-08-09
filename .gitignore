@@ -1,0 +1,30 @@
+# ESP-IDF build outputs
+build/
+build.*/
+build-ota/
+sdkconfig.old
+
+# ESP-IDF managed components are restored from dependencies.lock
+managed_components/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python/script cache
+__pycache__/
+*.py[cod]
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Local git worktrees
+.worktrees/
+
+# Local Codex/Superpowers scratch previews
+.superpowers/

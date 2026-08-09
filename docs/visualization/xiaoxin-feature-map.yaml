@@ -1,0 +1,221 @@
+schema_version: 1
+title: 小新固件功能地图
+updated: 2026-07-12
+scope: Waveshare ESP32-S3 Touch LCD 1.46 小新/泡泡宠物固件
+source_documents:
+  - ../xiaoxin-feature-roadmap.zh-CN.md
+  - ../xiaoxin-real-notification-center.zh-CN.md
+  - ../xiaoxin-pet-emotion-gif-mapping.zh-CN.md
+  - ../superpowers/specs/2026-06-24-xiaoxin-dynamic-low-power-clock-design.zh-CN.md
+  - ../xiaoxin-notification-delivery-policy.zh-CN.md
+status_legend:
+  - name: 已完成
+    meaning: 核心用户路径已经可用，并有基本验证。
+  - name: 部分完成
+    meaning: 基础结构或局部事件已经完成，但还缺真实数据、调度、过期策略或端到端接入。
+  - name: 未开始
+    meaning: 只有规划，尚无明确代码实现。
+
+features:
+  - id: notification_center
+    title: 真实通知中心与非打断式到达策略
+    priority: P0
+    status: 部分完成
+    goal: 让通知事件可靠保存为卡片，普通通知不遮挡宠物主界面，紧急告警继续走独立 Alert 通道。
+    implemented:
+      - 通知中心已经从静态样板改为事件注入模型。
+      - 支持 upsert、移除、单条清理、全部清理和优先级排序。
+      - 低电量、WiFi 断开/配网中、语音识别失败已经接入通知仓库。
+      - 课程提醒已经有可注入 helper。
+      - OTA 检查、下载和升级失败状态已经写入通知中心。
+      - ttl_ms 已接入自动过期扫描，只有存在待过期通知时才维持周期定时器。
+      - 普通通知只写入通知卡片，不再创建顶部 heads-up 悬浮窗。
+      - 本地测试覆盖事件注入、排序、清理、TTL 和课程提醒 helper。
+    gaps:
+      - 宠物主页还缺克制的未读标记或宠物行为提示，用户需要主动进入通知页查看内容。
+      - 课程提醒还缺真实课表源、调度器、去重和本地提醒策略。
+      - 通知中心卡片还缺通知发生时间。
+      - 提示音、震动和语音播报还缺按优先级、隐私和场景分级的策略。
+    next_steps:
+      - 为主页设计不展示正文的未读状态，例如宠物动作、信封标记或未读数量。
+      - 接入第一版课程提醒数据源。
+      - 后续为通知卡片补充通知时间显示。
+      - 后续按通知优先级评估提示音、语音和震动反馈。
+    modules:
+      - xiaoxin_card_pager
+      - application
+      - display
+      - xiaoxin_battery_state
+    tests:
+      - tests/xiaoxin_notification_visual_path_test.py
+      - tests/xiaoxin_card_pager_test.c
+    related_docs:
+      - ../xiaoxin-real-notification-center.zh-CN.md
+      - ../xiaoxin-notification-delivery-policy.zh-CN.md
+
+  - id: dynamic_overview
+    title: 动态总览页
+    priority: P1
+    status: 部分完成
+    goal: 让 Overview 页成为用户抬手就能看的日常摘要。
+    implemented:
+      - Overview UI 保留四张卡片形态。
+      - UI 通过 xiaoxin_overview_snapshot_t 渲染快照。
+      - 时间、日期、星期可从本机时间构建。
+      - 设备状态已经接入网络连接状态和电量读取结果。
+      - 天气、课程、待办已经预留注入字段和空态显示。
+    gaps:
+      - BuildOverviewState 目前只填入时间、网络和电量。
+      - 天气、课程、待办还没有真实服务端同步源。
+      - 设备状态还缺温度、内存等更完整摘要。
+    next_steps:
+      - 定义 Overview 同步数据结构或配置入口。
+      - 先接入一个最小真实数据源，例如课程或今日待办摘要。
+      - 明确设备电量百分比来源，避免显示误导。
+    modules:
+      - xiaoxin_overview_model
+      - xiaoxin_battery_level
+      - xiaoxin_battery_state
+    tests:
+      - tests/xiaoxin_overview_model_test.c
+    related_docs:
+      - ../xiaoxin-feature-roadmap.zh-CN.md
+
+  - id: pet_mood
+    title: 宠物情绪系统
+    priority: P1
+    status: 部分完成
+    goal: 让宠物不只播放状态动画，而能根据设备和用户行为表现出性格。
+    implemented:
+      - 已新增独立 paopao_pet_mood 纯逻辑模块。
+      - 服务端 llm.emotion、触摸、拖动、摇晃、低电量、WiFi 和语音错误可转成宠物表现建议。
+      - 一格低电量边沿已经接入宠物 mood，稳定进入低电状态时复用 tired.gif 表现疲惫。
+      - BOOT 按键已经从宠物 mood 和本地动画触发中释放，避免和系统设置入口冲突。
+      - 单元测试和 source-path 测试覆盖情绪冷却、服务端情绪映射和本地互动。
+    gaps:
+      - 0 格严重低电量、充电识别和电量恢复反馈尚未纳入宠物表现。
+      - 目前更接近事件到动画建议，尚未引入额外长周期宠物状态建模。
+      - 低功耗宠物状态、长时间无交互后的打盹还未形成完整策略。
+      - 宠物短文案和轻量提示尚未形成独立输出通道。
+    next_steps:
+      - 将一格低电映射、冷却时长和 GIF 回退规则继续沉淀到现有宠物情绪文档。
+      - 充电识别、0 格严重低电量和电量恢复反馈保持为后续独立工作，不纳入这次同步。
+      - 为新增 GIF 或表情资源建立尺寸、触发、冷却和回退规则。
+    modules:
+      - paopao_pet_mood
+      - paopao_pet_emotion
+      - paopao_pet_renderer
+    tests:
+      - tests/paopao_pet_mood_test.c
+      - tests/paopao_pet_emotion_test.c
+      - tests/xiaoxin_pet_mood_integration_path_test.py
+    related_docs:
+      - ../xiaoxin-pet-emotion-gif-mapping.zh-CN.md
+
+  - id: local_settings
+    title: 本机设置页
+    priority: P2
+    status: 部分完成
+    goal: 补齐设备本机可配置能力。
+    implemented:
+      - BOOT 长按已经作为本机设置页主入口。
+      - 设置页以 overlay 形式挂载，不加入三页分页状态机。
+      - 亮度页已经升级为动态滑条，支持预览和持久化。
+      - Wi-Fi 页复用现有重新配网入口。
+      - 关于页和省电页已经落地。
+    gaps:
+      - 音量、静音、提示音、震动等项目尚未接入真实音频或震动配置。
+      - 宠物主题、动画风格、睡眠时间等产品化配置尚未落地。
+      - 省电相关实机体验仍需 build/flash 后确认。
+    next_steps:
+      - 优先补睡眠/低功耗时间这类和省电调度器直接相关的设置。
+      - 评估音量、提示音、震动是否适合当前目标板。
+      - 复杂输入继续放到 Web 配置面板或服务端配置。
+    modules:
+      - xiaoxin_settings_model
+      - xiaoxin_power_control
+      - xiaoxin_system_overlay
+    tests:
+      - tests/xiaoxin_settings_model_test.c
+      - tests/xiaoxin_settings_path_test.py
+    related_docs:
+      - ../xiaoxin-feature-roadmap.zh-CN.md
+
+  - id: web_config_panel
+    title: Web 配置面板
+    priority: P2
+    status: 未开始
+    goal: 把不适合在小屏上输入的配置放到浏览器里。
+    implemented:
+      - 项目已有 Wi-Fi 配网页和重新配网入口，可作为后续 Web 配置面板参考。
+    gaps:
+      - 课程、待办、提醒、服务器地址、宠物资源等复杂输入尚未形成统一 Web 配置页面。
+      - 设备端配置接口边界尚未定义。
+    next_steps:
+      - 定义最小配置范围：课程/提醒、服务端地址、设备昵称。
+      - 复用现有配网页能力，避免固件端引入过重页面。
+      - 写入配置后通知 Overview、通知中心和设置页刷新。
+    modules:
+      - sonic_wifi_config
+      - settings
+    tests:
+      - tests/wifi_config_status_path_test.py
+    related_docs:
+      - ../xiaoxin-feature-roadmap.zh-CN.md
+
+  - id: low_power_experience
+    title: 低功耗与续航体验
+    priority: P2
+    status: 部分完成
+    goal: 让设备在日常佩戴或桌面使用中更稳定、省电。
+    implemented:
+      - 目标板已经接入 PowerSaveTimer(-1, 60, -1)。
+      - 低功耗时钟已经升级为黑底大号时间、动态外圈圆弧和 POWER 唤醒提示。
+      - xiaoxin_low_power_clock_model 已经独立，并有模型测试和视觉路径测试。
+      - POWER 短按、BOOT 按键和触摸活动都已接入唤醒路径。
+      - 设置页可启停省电模式，主页电池图标可显示省电状态。
+      - SNTP 已扩展为三服务器并增加同步回调。
+    gaps:
+      - 低电量自动降亮度、充电动画、电量曲线校准仍未落地。
+      - 低功耗页的日期、电量、同步状态等 AOD 信息仍在演进。
+      - 完整体验还需要真机长时间验证。
+    next_steps:
+      - 完成日期、电量和同步状态显示。
+      - 增加低电量自动降亮度或省电亮度策略。
+      - 设计充电状态视觉反馈和电量曲线校准流程。
+    modules:
+      - xiaoxin_low_power_clock_model
+      - xiaoxin_power_control
+      - xiaoxin_battery_level
+    tests:
+      - tests/xiaoxin_low_power_clock_model_test.c
+      - tests/xiaoxin_low_power_clock_visual_path_test.py
+    related_docs:
+      - ../superpowers/specs/2026-06-24-xiaoxin-dynamic-low-power-clock-design.zh-CN.md
+
+phases:
+  - name: 第一阶段：真实数据接入
+    status: 部分完成
+    focus: 通知仓库、非打断式到达策略、低电量/WiFi/语音错误事件、TTL、OTA 和课程提醒。
+  - name: 第二阶段：总览页动态化
+    status: 部分完成
+    focus: Overview 快照模型、真实摘要数据源和端到端刷新链路。
+  - name: 第三阶段：宠物情绪系统
+    status: 部分完成
+    focus: 一格低电映射、现有情绪输入和 GIF 触发边界。
+  - name: 第四阶段：设置与配置
+    status: 部分完成
+    focus: 本机高频设置、Web 复杂配置和服务端配置同步。
+  - name: 第五阶段：功耗和稳定性优化
+    status: 部分完成
+    focus: 低电量策略、运行时观察、异常恢复和长时间真机验证。
+
+risks:
+  - name: 显示文件继续变大
+    mitigation: 把通知仓库、总览数据、宠物情绪和设置存储拆成独立模块，显示文件只保留渲染和触摸分发。
+  - name: 真实事件和手动清理冲突
+    mitigation: 状态型事件使用 upsert/remove，用户清理只代表当前不看，外部状态再次变化时可以重新出现。
+  - name: 小屏交互过载
+    mitigation: 本机只做高频操作，复杂输入放到 Web 配置面板，每个页面保持单一目的。
+  - name: 动画影响功耗和流畅度
+    mitigation: 限制同时运行动画数量，页面不可见时暂停动画，低电量或息屏前降低刷新频率。

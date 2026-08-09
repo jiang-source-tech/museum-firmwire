@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>小新固件功能地图</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f7;
+      --ink: #162033;
+      --muted: #667085;
+      --line: #d5deea;
+      --line-strong: #bac8d9;
+      --panel: #ffffff;
+      --panel-soft: #f7f9fc;
+      --navy: #0b1220;
+      --navy-2: #111c2e;
+      --teal: #0f766e;
+      --cyan: #0891b2;
+      --blue: #2563eb;
+      --amber: #b7791f;
+      --rose: #be123c;
+      --green: #15803d;
+      --shadow: 0 18px 44px rgba(22, 32, 51, 0.10);
+      --shadow-soft: 0 8px 22px rgba(22, 32, 51, 0.07);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--bg);
+    }
+
+    body {
+      min-width: 320px;
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(11, 18, 32, 0.06), rgba(238, 242, 247, 0) 220px),
+        var(--bg);
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .shell-header {
+      background:
+        linear-gradient(135deg, rgba(8, 145, 178, 0.18), rgba(15, 118, 110, 0) 42%),
+        var(--navy);
+      color: #f8fafc;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .header-inner {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 28px 24px 26px;
+    }
+
+    .hero-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 520px;
+      gap: 28px;
+      align-items: end;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 26px;
+      padding: 5px 9px;
+      border: 1px solid rgba(125, 211, 252, 0.24);
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.45);
+      color: #bde7f3;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+    }
+
+    h1 {
+      max-width: 760px;
+      margin-top: 14px;
+      font-size: 34px;
+      font-weight: 780;
+      line-height: 1.2;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      margin-top: 12px;
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .stat {
+      min-height: 84px;
+      padding: 14px;
+      border: 1px solid rgba(203, 213, 225, 0.18);
+      border-radius: 8px;
+      background: rgba(17, 28, 46, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 29px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 9px;
+      color: #d7e3f1;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 22px 24px 36px;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) 170px 170px;
+      gap: 12px;
+      align-items: center;
+      margin: 0 0 22px;
+      padding: 14px;
+      border: 1px solid rgba(213, 222, 234, 0.86);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: blur(10px);
+    }
+
+    .search-wrap,
+    .select-wrap {
+      position: relative;
+    }
+
+    .search-wrap::before {
+      content: "";
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #7b8798;
+      border-radius: 50%;
+      transform: translateY(-55%);
+    }
+
+    .search-wrap::after {
+      content: "";
+      position: absolute;
+      left: 25px;
+      top: 25px;
+      width: 7px;
+      height: 2px;
+      border-radius: 2px;
+      background: #7b8798;
+      transform: rotate(45deg);
+    }
+
+    input,
+    select,
+    button {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 11px;
+      outline: none;
+    }
+
+    input {
+      padding-left: 40px;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: rgba(8, 145, 178, 0.74);
+      box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.13);
+    }
+
+    button {
+      cursor: pointer;
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+
+    section {
+      margin-top: 28px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      font-size: 21px;
+      line-height: 1.3;
+    }
+
+    .section-note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 510px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 5px;
+      background: var(--cyan);
+    }
+
+    .card.priority-p0::before {
+      background: var(--rose);
+    }
+
+    .card.priority-p1::before {
+      background: var(--blue);
+    }
+
+    .card.priority-p2::before {
+      background: var(--amber);
+    }
+
+    .card-top {
+      padding: 18px 20px 14px 22px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #fbfcfe);
+    }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    h3 {
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+      background: var(--panel-soft);
+      color: var(--muted);
+    }
+
+    .badge.priority-p0 {
+      background: #ffe4e8;
+      color: var(--rose);
+    }
+
+    .badge.priority-p1 {
+      background: #dbeafe;
+      color: var(--blue);
+    }
+
+    .badge.priority-p2 {
+      background: #fef3c7;
+      color: var(--amber);
+    }
+
+    .badge.status-done {
+      background: #dcfce7;
+      color: var(--green);
+    }
+
+    .badge.status-partial {
+      background: #dff7fb;
+      color: #036879;
+    }
+
+    .badge.status-pending {
+      background: #eef2f7;
+      color: #475467;
+    }
+
+    .goal {
+      margin-top: 12px;
+      color: #526078;
+      line-height: 1.65;
+    }
+
+    .progress {
+      margin-top: 15px;
+      height: 8px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: var(--done) var(--gap) var(--next);
+      border-radius: 999px;
+      background: #e7edf5;
+    }
+
+    .progress span:nth-child(1) {
+      background: var(--teal);
+    }
+
+    .progress span:nth-child(2) {
+      background: #d97706;
+    }
+
+    .progress span:nth-child(3) {
+      background: var(--blue);
+    }
+
+    .counts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 14px 20px 12px 22px;
+      background: #fff;
+    }
+
+    .count {
+      min-height: 62px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 10px;
+    }
+
+    .count strong {
+      display: block;
+      color: #0f1f35;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .count span {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .card-body {
+      padding: 0 20px 18px 22px;
+    }
+
+    details {
+      border-top: 1px solid var(--line);
+      padding-top: 11px;
+      margin-top: 11px;
+    }
+
+    summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      color: #26374d;
+      font-weight: 760;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    summary::after {
+      content: "+";
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 22px;
+      height: 22px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    details[open] summary::after {
+      content: "-";
+    }
+
+    ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: #526078;
+      line-height: 1.62;
+    }
+
+    li + li {
+      margin-top: 3px;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .tag {
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 9px;
+      color: #334155;
+      background: #fff;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      counter-reset: phase;
+    }
+
+    .phase {
+      counter-increment: phase;
+      position: relative;
+      min-height: 170px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .phase::before {
+      content: counter(phase);
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      margin-bottom: 12px;
+      border-radius: 50%;
+      background: #e0f2fe;
+      color: #075985;
+      font-size: 13px;
+      font-weight: 780;
+    }
+
+    .phase h3,
+    .risk h3 {
+      font-size: 15px;
+    }
+
+    .phase p,
+    .risk p {
+      margin-top: 10px;
+      color: #5f6f85;
+      line-height: 1.58;
+      font-size: 14px;
+    }
+
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .risk {
+      min-height: 150px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .risk h3 {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .risk h3::before {
+      content: "";
+      flex: 0 0 8px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(183, 121, 31, 0.13);
+    }
+
+    .sources {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .sources a {
+      color: #1d4ed8;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 13px;
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+
+    .empty,
+    .load-error {
+      display: none;
+      border-radius: 8px;
+      padding: 14px;
+      line-height: 1.6;
+    }
+
+    .empty {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+    }
+
+    .load-error {
+      margin-bottom: 16px;
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      color: #9f1239;
+    }
+
+    .file-loader {
+      display: none;
+      max-width: 520px;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 1080px) {
+      .hero-row {
+        grid-template-columns: 1fr;
+      }
+
+      .stats,
+      .timeline,
+      .risk-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 880px) {
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        position: static;
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .header-inner,
+      main {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .stats,
+      .counts,
+      .timeline,
+      .risk-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        min-height: auto;
+      }
+
+      .card-head {
+        display: block;
+      }
+
+      .badges {
+        justify-content: flex-start;
+        margin-top: 10px;
+      }
+
+      .section-head {
+        display: block;
+      }
+
+      .section-note {
+        margin-top: 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="shell-header">
+    <div class="header-inner">
+      <div class="hero-row">
+        <div>
+          <div class="eyebrow">YAML 驱动的技术文档视图</div>
+          <h1 id="title">小新固件功能地图</h1>
+          <div class="meta">
+            <span id="updated"></span>
+            <span id="scope"></span>
+          </div>
+        </div>
+        <div class="stats" aria-label="功能地图统计">
+          <div class="stat"><strong id="featureCount">0</strong><span>功能方向</span></div>
+          <div class="stat"><strong id="partialCount">0</strong><span>部分完成</span></div>
+          <div class="stat"><strong id="pendingCount">0</strong><span>未开始</span></div>
+          <div class="stat"><strong id="testCount">0</strong><span>关联测试</span></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="loadError" class="load-error">
+      无法自动读取旁边的 xiaoxin-feature-map.yaml。可以用本目录启动本地服务，或手动选择 YAML 文件。
+      <div class="file-loader" id="fileLoader">
+        <input id="yamlFile" type="file" accept=".yaml,.yml,text/yaml">
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-wrap">
+        <input id="search" type="search" placeholder="搜索功能、模块、测试或下一步">
+      </div>
+      <div class="select-wrap">
+        <select id="priorityFilter" aria-label="优先级筛选"></select>
+      </div>
+      <div class="select-wrap">
+        <select id="statusFilter" aria-label="状态筛选"></select>
+      </div>
+    </div>
+
+    <div id="empty" class="empty">没有匹配的功能方向。</div>
+
+    <section>
+      <div class="section-head">
+        <h2>功能方向</h2>
+        <p id="featureVisibleCount" class="section-note"></p>
+      </div>
+      <div id="features" class="feature-grid"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>实施阶段</h2>
+        <p class="section-note">从真实数据接入到功耗稳定性的推进路径</p>
+      </div>
+      <div id="phases" class="timeline"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>主要风险</h2>
+        <p class="section-note">维护时优先检查这些边界</p>
+      </div>
+      <div id="risks" class="risk-grid"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>来源文档</h2>
+        <p class="section-note">HTML 只展示，事实来源仍在 Markdown 和 YAML</p>
+      </div>
+      <div id="sources" class="sources"></div>
+    </section>
+  </main>
+
+  <script>
+    const YAML_URL = "./xiaoxin-feature-map.yaml";
+    let featureData = null;
+
+    function parseScalar(value) {
+      const text = String(value || "").trim();
+      if (text === "") return "";
+      if (/^\d+$/.test(text)) return Number(text);
+      return text.replace(/^["']|["']$/g, "");
+    }
+
+    function assignKeyValue(target, text) {
+      const match = text.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+      if (!match) return null;
+      const key = match[1];
+      const value = match[2] || "";
+      if (value === "") {
+        target[key] = [];
+        return key;
+      }
+      target[key] = parseScalar(value);
+      return null;
+    }
+
+    function parseYaml(text) {
+      const root = {};
+      const arraySections = new Set(["source_documents", "status_legend", "features", "phases", "risks"]);
+      let section = null;
+      let current = null;
+      let currentList = null;
+
+      text.replace(/\r/g, "").split("\n").forEach((line) => {
+        if (!line.trim() || line.trim().startsWith("#")) return;
+
+        const indent = line.match(/^ */)[0].length;
+        const trimmed = line.trim();
+
+        if (indent === 0) {
+          const match = trimmed.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+          if (!match) return;
+          const key = match[1];
+          const value = match[2] || "";
+          if (value === "") {
+            root[key] = arraySections.has(key) ? [] : {};
+            section = key;
+            current = null;
+            currentList = null;
+          } else {
+            root[key] = parseScalar(value);
+            section = null;
+            current = null;
+            currentList = null;
+          }
+          return;
+        }
+
+        if (!section) return;
+
+        if (section === "source_documents" && indent === 2 && trimmed.startsWith("- ")) {
+          root.source_documents.push(parseScalar(trimmed.slice(2)));
+          return;
+        }
+
+        if (["status_legend", "features", "phases", "risks"].includes(section)) {
+          if (indent === 2 && trimmed.startsWith("- ")) {
+            current = {};
+            root[section].push(current);
+            currentList = null;
+            const inline = trimmed.slice(2);
+            if (inline) {
+              currentList = assignKeyValue(current, inline);
+            }
+            return;
+          }
+
+          if (!current) return;
+
+          if (indent === 4) {
+            currentList = assignKeyValue(current, trimmed);
+            return;
+          }
+
+          if (indent === 6 && trimmed.startsWith("- ") && currentList) {
+            current[currentList].push(parseScalar(trimmed.slice(2)));
+          }
+        }
+      });
+
+      return root;
+    }
+
+    function unique(items) {
+      return Array.from(new Set(items.filter(Boolean)));
+    }
+
+    function statusClass(status) {
+      if (status === "已完成") return "status-done";
+      if (status === "部分完成") return "status-partial";
+      return "status-pending";
+    }
+
+    function priorityClass(priority) {
+      return `priority-${String(priority || "").toLowerCase()}`;
+    }
+
+    function renderList(items) {
+      if (!items || !items.length) return "<ul><li>无</li></ul>";
+      return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+    }
+
+    function renderTags(items) {
+      if (!items || !items.length) return "";
+      return `<div class="tags">${items.map((item) => `<span class="tag">${escapeHtml(item)}</span>`).join("")}</div>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function renderStats(data) {
+      const features = data.features || [];
+      const tests = unique(features.flatMap((feature) => feature.tests || []));
+      document.getElementById("featureCount").textContent = features.length;
+      document.getElementById("partialCount").textContent = features.filter((feature) => feature.status === "部分完成").length;
+      document.getElementById("pendingCount").textContent = features.filter((feature) => feature.status === "未开始").length;
+      document.getElementById("testCount").textContent = tests.length;
+    }
+
+    function renderFilters(data) {
+      const priorities = ["全部优先级", ...unique((data.features || []).map((feature) => feature.priority))];
+      const statuses = ["全部状态", ...unique((data.features || []).map((feature) => feature.status))];
+      document.getElementById("priorityFilter").innerHTML = priorities.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
+      document.getElementById("statusFilter").innerHTML = statuses.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
+    }
+
+    function featureMatches(feature, query, priority, status) {
+      const haystack = [
+        feature.title,
+        feature.goal,
+        feature.priority,
+        feature.status,
+        ...(feature.modules || []),
+        ...(feature.tests || []),
+        ...(feature.implemented || []),
+        ...(feature.gaps || []),
+        ...(feature.next_steps || []),
+      ].join(" ").toLowerCase();
+
+      return (!query || haystack.includes(query))
+        && (priority === "全部优先级" || feature.priority === priority)
+        && (status === "全部状态" || feature.status === status);
+    }
+
+    function countWidth(value, total) {
+      if (!total) return "1fr";
+      return `${Math.max(8, Math.round((value / total) * 100))}fr`;
+    }
+
+    function renderFeatures() {
+      const query = document.getElementById("search").value.trim().toLowerCase();
+      const priority = document.getElementById("priorityFilter").value;
+      const status = document.getElementById("statusFilter").value;
+      const allFeatures = featureData.features || [];
+      const features = allFeatures.filter((feature) => featureMatches(feature, query, priority, status));
+
+      document.getElementById("featureVisibleCount").textContent = `显示 ${features.length} / ${allFeatures.length} 个方向`;
+      document.getElementById("empty").style.display = features.length ? "none" : "block";
+      document.getElementById("features").innerHTML = features.map((feature) => {
+        const implementedCount = (feature.implemented || []).length;
+        const gapCount = (feature.gaps || []).length;
+        const nextCount = (feature.next_steps || []).length;
+        const total = implementedCount + gapCount + nextCount;
+        const progressStyle = `--done:${countWidth(implementedCount, total)}; --gap:${countWidth(gapCount, total)}; --next:${countWidth(nextCount, total)};`;
+
+        return `
+          <article class="card ${priorityClass(feature.priority)}">
+            <div class="card-top">
+              <div class="card-head">
+                <h3>${escapeHtml(feature.title)}</h3>
+                <div class="badges">
+                  <span class="badge ${priorityClass(feature.priority)}">${escapeHtml(feature.priority)}</span>
+                  <span class="badge ${statusClass(feature.status)}">${escapeHtml(feature.status)}</span>
+                </div>
+              </div>
+              <p class="goal">${escapeHtml(feature.goal)}</p>
+              <div class="progress" style="${progressStyle}" aria-label="功能条目分布">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <div class="counts">
+              <div class="count"><strong>${implementedCount}</strong><span>已落地</span></div>
+              <div class="count"><strong>${gapCount}</strong><span>缺口</span></div>
+              <div class="count"><strong>${nextCount}</strong><span>下一步</span></div>
+            </div>
+            <div class="card-body">
+              <details open>
+                <summary>下一步</summary>
+                ${renderList(feature.next_steps)}
+              </details>
+              <details>
+                <summary>已落地</summary>
+                ${renderList(feature.implemented)}
+              </details>
+              <details>
+                <summary>缺口</summary>
+                ${renderList(feature.gaps)}
+              </details>
+              <details>
+                <summary>模块</summary>
+                ${renderTags(feature.modules)}
+              </details>
+              <details>
+                <summary>测试</summary>
+                ${renderTags(feature.tests)}
+              </details>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderPhases(data) {
+      document.getElementById("phases").innerHTML = (data.phases || []).map((phase) => `
+        <article class="phase">
+          <div class="badges"><span class="badge ${statusClass(phase.status)}">${escapeHtml(phase.status)}</span></div>
+          <h3>${escapeHtml(phase.name)}</h3>
+          <p>${escapeHtml(phase.focus)}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderRisks(data) {
+      document.getElementById("risks").innerHTML = (data.risks || []).map((risk) => `
+        <article class="risk">
+          <h3>${escapeHtml(risk.name)}</h3>
+          <p>${escapeHtml(risk.mitigation)}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderSources(data) {
+      document.getElementById("sources").innerHTML = (data.source_documents || []).map((source) => `
+        <a href="${escapeHtml(source)}">${escapeHtml(source)}</a>
+      `).join("");
+    }
+
+    function render(data) {
+      featureData = data;
+      document.getElementById("title").textContent = data.title || "小新固件功能地图";
+      document.getElementById("updated").textContent = data.updated ? `更新：${data.updated}` : "";
+      document.getElementById("scope").textContent = data.scope || "";
+      renderStats(data);
+      renderFilters(data);
+      renderFeatures();
+      renderPhases(data);
+      renderRisks(data);
+      renderSources(data);
+    }
+
+    function wireEvents() {
+      ["search", "priorityFilter", "statusFilter"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", renderFeatures);
+      });
+
+      document.getElementById("yamlFile").addEventListener("change", (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        file.text().then((text) => {
+          document.getElementById("loadError").style.display = "none";
+          render(parseYaml(text));
+        });
+      });
+    }
+
+    async function loadData() {
+      try {
+        const response = await fetch(YAML_URL, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        render(parseYaml(await response.text()));
+      } catch (error) {
+        document.getElementById("loadError").style.display = "block";
+        document.getElementById("fileLoader").style.display = "block";
+      }
+    }
+
+    wireEvents();
+    loadData();
+  </script>
+</body>
+</html>

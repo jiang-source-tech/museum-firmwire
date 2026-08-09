@@ -1,0 +1,13 @@
+# ESP-IDF Partition Table
+# Xiaoxin ESP32-S3 16 MiB bootstrap layout.
+#
+# This is the one-time USB bootstrap layout for subsequently installing
+# firmware over Wi-Fi.  Keep nvs at its deployed location and size so the
+# bootstrap does not discard device settings, activation, or Wi-Fi state.
+# Name,      Type, SubType, Offset,    Size,      Flags
+nvs,         data, nvs,     0x9000,    0x6000,
+phy_init,    data, phy,     0xf000,    0x1000,
+otadata,     data, ota,     0x10000,   0x2000,
+ota_0,       app,  ota_0,   0x20000,   0x600000,
+ota_1,       app,  ota_1,   0x620000,  0x600000,
+assets,      data, spiffs,  0xc20000,  0x3e0000,
