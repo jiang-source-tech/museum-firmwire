@@ -35,7 +35,6 @@ namespace {
 constexpr const char* kOtaPartitionLayoutId = "xiaoxin-ota-16m-v1";
 
 constexpr const char* kLegacyOtaUrls[] = {
-    "http://124.221.253.206:8003/xiaoxin/ota/",
     "http://124.222.121.103:8003/xiaozhi/ota/",
     "http://121.43.33.0:8003/xiaozhi/ota/",
     "http://121.43.33.0:8003/xiaoxin/ota/",
@@ -50,7 +49,6 @@ bool IsMuseumWebsocketUrl(const std::string& url) {
 bool IsLegacyWebsocketUrl(const std::string& url) {
     return url.find("/xiaozhi/v1/") != std::string::npos ||
            url.find("/xiaoxin/v1/") != std::string::npos ||
-           url.find("124.221.253.206") != std::string::npos ||
            url.find("124.222.121.103") != std::string::npos ||
            url.find("api.tenclass.net") != std::string::npos;
 }

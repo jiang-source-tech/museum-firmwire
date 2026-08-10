@@ -3,7 +3,6 @@ from pathlib import Path
 
 EXPECTED_OTA_URL = ""
 LEGACY_OTA_URLS = (
-    "http://124.221.253.206:8003/xiaoxin/ota/",
     "http://124.222.121.103:8003/xiaozhi/ota/",
     "http://121.43.33.0:8003/xiaoxin/ota/",
     "https://api.tenclass.net/xiaozhi/ota/",
