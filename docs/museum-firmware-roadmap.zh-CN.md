@@ -43,7 +43,7 @@
 ## 兼容边界
 
 - 当前正式路径为 WebSocket `/museum/v1/` 和 OTA `/museum/ota/`。
-- 服务端暂时保留 `/xiaoxin/ota/` 等旧路径兼容，只用于尚未升级设备的迁移，不能据此恢复旧业务语义。
+- 服务端不再提供 `/xiaoxin/*`、`/xiaozhi/*` 或旧 activation 兼容接口；固件保留的旧地址识别只用于清理 NVS 中的历史覆盖值。
 - 0.2.0 固件只接受 OTA 返回的 `/museum/v1/` WebSocket 地址，并会清除 NVS 中缓存的旧主机、`/xiaozhi/v1/`、`/xiaoxin/v1/` 或其他非博物馆地址。
 - 固件会拒绝旧 `/xiaozhi/ota/` 覆盖地址；新构建必须显式配置真实 `/museum/ota/` 入口。
 - 1.46 分区表等底层产物可能仍带 `xiaoxin` 文件名；这是硬件兼容标识，不是产品身份。
