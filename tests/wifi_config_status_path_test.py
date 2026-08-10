@@ -172,7 +172,6 @@ def test_manual_wifi_reconfiguration_can_interrupt_activation_ota_check():
     abort_after_version = activation_body.index(
         "if (activation_abort_requested_)", activation_body.index("CheckNewVersion();")
     )
-    assert abort_after_version < activation_body.index("overview_authority_.Configure(")
     assert abort_after_version < activation_body.index("InitializeProtocol();")
     assert "if (activation_abort_requested_) {\n        return;\n    }\n\n    // Signal completion" in activation_body
     assert "activation_abort_requested_" in check_version_body

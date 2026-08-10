@@ -60,42 +60,16 @@ bool Display::RemoveNotification(const char* id) {
     return false;
 }
 
-void Display::UpdateOverviewData(
-    bool weather_configured,
-    bool weather_available,
-    const char* weather_summary,
-    const char* weather_detail,
-    bool course_configured,
-    bool course_available_today,
-    const char* course_title,
-    const char* course_detail,
-    bool todo_configured,
-    uint8_t todo_count,
-    const char* todo_detail,
-    bool companion_available,
-    uint8_t xiaoxin_age,
-    const char* growth_summary
-) {
-    ESP_LOGW(
-        TAG,
-        "UpdateOverviewData ignored: weather=%d/%d course=%d/%d todo=%d/%u companion=%d/%u",
-        weather_configured,
-        weather_available,
-        course_configured,
-        course_available_today,
-        todo_configured,
-        (unsigned int)todo_count,
-        companion_available,
-        (unsigned int)xiaoxin_age
-    );
-}
-
 void Display::UpdateStatusBar(bool update_all) {
 }
 
 
 void Display::SetEmotion(const char* emotion) {
     ESP_LOGW(TAG, "SetEmotion: %s", emotion);
+}
+
+void Display::SetMuseumState(const char* text) {
+    SetChatMessage("system", text != nullptr ? text : "");
 }
 
 void Display::SetChatMessage(const char* role, const char* content) {

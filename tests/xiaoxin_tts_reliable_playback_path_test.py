@@ -218,37 +218,6 @@ def test_reliable_tts_captures_generation_return_state_and_uses_it_for_done_and_
     assert "kDeviceStateIdle);" not in failure
 
 
-def test_notification_connecting_window_is_captured_as_idle_tts_origin():
-    header = read(APPLICATION_H)
-    source = read(APPLICATION_CC)
-    wake = source[source.index("void Application::HandleNotificationWakeEvent"):
-                  source.index("void Application::ContinueOpenNotificationChannel")]
-    continuation = source[
-        source.index("void Application::ContinueOpenNotificationChannel"):
-        source.index("void Application::HandleStartListeningEvent")
-    ]
-    start = source[source.index("void Application::HandleReliableTtsStart"):
-                   source.index("void Application::HandleAudioChannelOpened")]
-    return_policy = source[
-        source.index("TtsReturnState Application::ReliableTtsReturnStateForStart"):
-        source.index("void Application::SetDeviceStateIfTtsGenerationIdle")
-    ]
-
-    assert "NotificationTtsOrigin notification_tts_origin_;" in header
-    assert "NotificationTtsOrigin::Token notification_token" in wake
-    assert "notification_tts_origin_.BeginOpenIntent()" in wake
-    assert "notification_tts_origin_.ConsumeForTtsStart()" in start
-    assert "notification_tts_origin_.ClearOpenIntent(notification_token)" in continuation
-    close = source[
-        source.index("protocol_->OnAudioChannelClosed"):
-        source.index("protocol_->OnIncomingJson")
-    ]
-    assert "notification_tts_origin_.ClearOpenIntent" not in close
-    assert wake.index("notification_tts_origin_.BeginOpenIntent()") < wake.index(
-        "SetDeviceState(kDeviceStateConnecting);"
-    )
-
-
 def test_reliable_tts_supersession_inherits_return_state_without_explicit_origin():
     source = read(APPLICATION_CC)
     body = source[source.index("void Application::HandleReliableTtsStart"):
@@ -333,17 +302,6 @@ def test_legacy_audio_testing_route_is_admitted_into_current_pipeline_epoch():
     assert body.index("audio_pipeline_epoch_.PublishCurrent") < body.index(
         "audio_decode_queue_ = std::move(audio_testing_queue_)"
     )
-
-
-def test_xiaoxin_event_card_is_idempotent_by_delivery_id():
-    source = read(APPLICATION_CC)
-    start = source.index("void Application::HandleXiaoxinEvent")
-    end = source.index("void Application::HandleXiaoxinOverviewUpdate", start)
-    body = source[start:end]
-    assert 'std::string notification_id = std::string("xiaoxin_event:") + delivery_id;' in body
-    assert "event = std::move(event)" in body
-    assert "event.c_str()" in body
-    assert 'protocol_->SendXiaoxinAck(delivery_id, "device_received");' in body
 
 
 def test_reliable_tts_control_transactions_do_not_span_blocking_or_external_work():

@@ -44,23 +44,9 @@ public:
         const char* event_type = nullptr
     );
     virtual bool RemoveNotification(const char* id);
-    virtual void UpdateOverviewData(
-        bool weather_configured,
-        bool weather_available,
-        const char* weather_summary,
-        const char* weather_detail,
-        bool course_configured,
-        bool course_available_today,
-        const char* course_title,
-        const char* course_detail,
-        bool todo_configured,
-        uint8_t todo_count,
-        const char* todo_detail,
-        bool companion_available,
-        uint8_t xiaoxin_age,
-        const char* growth_summary
-    );
     virtual void SetEmotion(const char* emotion);
+    // Keep the current museum context visible independently of transient chat text.
+    virtual void SetMuseumState(const char* text);
     virtual void SetChatMessage(const char* role, const char* content);
     virtual void UpdateChatMessage(const char* role, const char* content);
     virtual void ClearChatMessages();

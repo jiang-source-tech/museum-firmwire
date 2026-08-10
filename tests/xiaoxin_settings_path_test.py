@@ -129,7 +129,7 @@ def test_settings_overlay_labels_are_valid_utf8_chinese():
 
     assert 'lv_label_set_text(settings_title_label_, "设置")' in source
     assert 'lv_label_set_text(settings_back_label_, "退出设置")' in source
-    assert '"小芯 D151\\n固件 %s\\n本次 %s\\n上次 %s\\n重启 %s\\n欠压 %lu次"' in source
+    assert '"金潮杯博物馆\\n固件 %s\\n本次 %s\\n上次 %s\\n重启 %s\\n欠压 %lu次"' in source
     assert "\\n构建 %s %s" not in source
     assert 'lv_label_set_text(settings_title_label_, "关于")' in source
     assert 'lv_label_set_text(settings_title_label_, "亮度")' in source
@@ -240,15 +240,15 @@ def test_settings_button_touch_is_detected_after_first_pressed_frame():
     assert "if (!settings_touch_action_consumed_)" in body_flat
 
 
-def test_settings_touch_suppresses_card_pager_gestures():
+def test_settings_touch_is_consumed_before_normal_touch_tracking():
     body = function_body(read_source(BOARD_SOURCE), "void PollTouch(uint32_t now_ms)")
 
     assert "if (settings_open_)" in body
     assert "HandleSettingsTouch" in body
     assert body.index("touch_->ReadPoint") < body.index("if (settings_open_)")
-    assert body.index("if (settings_open_)") < body.index("xiaoxin_card_pager_press")
-
-
+    settings_branch = body[body.index("if (settings_open_)") :]
+    assert "return;" in settings_branch
+    assert settings_branch.index("HandleSettingsTouch") < settings_branch.index("return;")
 def test_settings_overlay_registers_lvgl_touch_input_device():
     source = read_source(BOARD_SOURCE)
 
@@ -280,7 +280,7 @@ def test_brightness_setting_uses_backlight_api_not_direct_settings_write():
 def test_brightness_page_exposes_dynamic_slider_not_three_presets():
     source = read_source(BOARD_SOURCE)
     body = strip_cpp_comments(
-        function_body(source, "void PaopaoPetDisplay::RenderSettingsBrightnessPage()")
+        function_body(source, "void MuseumDisplay::RenderSettingsBrightnessPage()")
     )
 
     assert "settings_brightness_value_label_" in source
@@ -359,7 +359,7 @@ def test_wifi_reconfiguration_reuses_existing_entrypoint():
 def test_wifi_page_defers_board_reconfiguration_until_after_display_lock():
     source = read_source(BOARD_SOURCE)
     body = strip_cpp_comments(
-        function_body(source, "void PaopaoPetDisplay::RenderSettingsWifiPage()")
+        function_body(source, "void MuseumDisplay::RenderSettingsWifiPage()")
     )
     loop_body = strip_cpp_comments(function_body(source, "void RunRenderLoop()"))
     lock_start = loop_body.index("DisplayLockGuard lock(this)")
@@ -377,7 +377,7 @@ def test_wifi_page_defers_board_reconfiguration_until_after_display_lock():
 def test_target_settings_caps_do_not_enable_audio_or_vibration_initially():
     body = function_body(
         read_source(BOARD_SOURCE),
-        "xiaoxin_settings_caps_t PaopaoPetDisplay::SettingsCaps() const",
+        "xiaoxin_settings_caps_t MuseumDisplay::SettingsCaps() const",
     )
 
     assert ".has_audio_output = false" in body
@@ -387,7 +387,7 @@ def test_target_settings_caps_do_not_enable_audio_or_vibration_initially():
 def test_power_save_setting_is_only_enabled_when_timer_is_initialized():
     source = read_source(BOARD_SOURCE)
     caps_body = strip_cpp_comments(
-        function_body(source, "xiaoxin_settings_caps_t PaopaoPetDisplay::SettingsCaps() const")
+        function_body(source, "xiaoxin_settings_caps_t MuseumDisplay::SettingsCaps() const")
     )
     timer_body = strip_cpp_comments(function_body(source, "void InitializePowerSaveTimer()"))
 
@@ -460,7 +460,7 @@ def test_power_save_no_longer_tints_removed_home_battery_meter():
     assert "xiaoxin_settings_power_save_battery_color(" not in source
 
 
-def test_about_page_prioritizes_xiaoxin_product_identity():
+def test_about_page_prioritizes_museum_product_identity():
     source = read_source(BOARD_SOURCE)
     body = function_body(source, "void RenderSettingsAboutPage()")
 
@@ -470,7 +470,7 @@ def test_about_page_prioritizes_xiaoxin_product_identity():
     assert "RuntimeHealthReadSnapshot(&snapshot)" in body
     assert "xiaoxin_runtime_health_format_duration" in body
     assert "xiaoxin_runtime_health_reset_label(snapshot.last_reset_kind)" in body
-    assert "小芯 D151" in body
+    assert "金潮杯博物馆" in body
     assert "固件 %s" in body
     assert "本次 %s" in body
     assert "上次 %s" in body

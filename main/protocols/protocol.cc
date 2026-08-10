@@ -55,27 +55,6 @@ void Protocol::SendAbortSpeaking(AbortReason reason) {
     SendText(message);
 }
 
-void Protocol::SendXiaoxinAck(const std::string& delivery_id,
-                              const std::string& state,
-                              const std::string& reason) {
-    cJSON* root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "type", "xiaoxin_ack");
-    cJSON_AddStringToObject(root, "delivery_id", delivery_id.c_str());
-    cJSON_AddStringToObject(root, "state", state.c_str());
-    if (reason.empty()) {
-        cJSON_AddNullToObject(root, "reason");
-    } else {
-        cJSON_AddStringToObject(root, "reason", reason.c_str());
-    }
-    cJSON_AddNumberToObject(root, "device_time", esp_timer_get_time() / 1000);
-    char* text = cJSON_PrintUnformatted(root);
-    if (text != nullptr) {
-        SendText(text);
-        cJSON_free(text);
-    }
-    cJSON_Delete(root);
-}
-
 void Protocol::SendTtsAck(const std::string& state,
                           const std::string& sentence_id,
                           const std::string& reason) {

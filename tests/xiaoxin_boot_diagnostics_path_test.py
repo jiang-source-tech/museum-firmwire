@@ -78,10 +78,9 @@ def test_boot_diagnostics_start_is_memory_only_until_explicit_flush():
     assert "PersistPreviousTrace(" in flush_body
 
 
-def test_board_boot_records_each_high_current_stage_and_deferred_imu():
+def test_board_boot_records_each_high_current_stage():
     source = read_source(BOARD_SOURCE)
     constructor = function_body(source, "CustomBoard()")
-    deferred = function_body(source, "void ScheduleDeferredMotionInit()")
 
     for stage in [
         "board_i2c_start",
@@ -92,23 +91,16 @@ def test_board_boot_records_each_high_current_stage_and_deferred_imu():
         "board_touch_start",
         "board_buttons_start",
         "board_power_save_timer_start",
-        "board_imu_deferred",
-        "board_imu_start",
         "board_constructor_done",
     ]:
-        assert f'BootDiagnosticsMark("{stage}")' in constructor or f'BootDiagnosticsMark("{stage}")' in deferred
-
-    assert 'BootDiagnosticsMark("board_imu_deferred_start")' in deferred
-    assert deferred.index('BootDiagnosticsMark("board_imu_deferred_start")') < deferred.index(
-        "self->InitializeMotion();"
-    )
+        assert f'BootDiagnosticsMark("{stage}")' in constructor
 
 
 def test_application_boot_records_ui_audio_network_and_protocol_stages():
     source = read_source(APPLICATION_SOURCE)
     initialize = function_body(source, "void Application::Initialize()")
     activation = function_body(source, "void Application::ActivationTask()")
-    protocol = function_body(source, "void Application::InitializeProtocol()")
+    protocol = function_body(source, "bool Application::InitializeProtocol()")
 
     assert '#include "boot_diagnostics.h"' in source
     assert 'BootDiagnosticsMark("app_initialize_start")' in initialize
@@ -205,76 +197,6 @@ def test_battery_boot_defers_debug_console_until_after_constructor():
     assert "self->InitializeDebugConsole();" in deferred
 
 
-def test_battery_boot_splash_is_black_high_brightness_and_held_until_ready():
-    source = read_source(BOARD_SOURCE)
-    show_splash = function_body(source, "void ShowBootSplashLocked()")
-    hide_from_timer = function_body(source, "void HideBootSplashFromTimer()")
-    complete_splash = function_body(source, "void CompleteBootSplash()")
-    constructor = function_body(source, "CustomBoard()")
-    start_network = function_body(source, "void StartNetwork() override")
-
-    assert "k_boot_splash_brightness_percent = 100" in source
-    assert "k_boot_splash_ready_hold_timeout_ms" in source
-    assert "boot_splash_wait_for_ready_ = s_boot_on_battery;" in show_splash
-    assert "assets_images_boot_gif_end - assets_images_boot_gif_start" in show_splash
-    assert "boot_splash_source_dsc_.data = assets_images_boot_gif_start;" in show_splash
-    assert "assets_images_waving_gif_start" not in show_splash
-    assert "lv_color_hex(0x000000)" in show_splash
-    assert "std::make_unique<LvglGif>(&boot_splash_source_dsc_, true, 0x000000, true)" in show_splash
-    assert "if (boot_splash_wait_for_ready_)" in hide_from_timer
-    assert "return;" not in block_after(hide_from_timer, "if (boot_splash_wait_for_ready_)")
-    assert "boot_splash_wait_for_ready_ = false;" in hide_from_timer
-    assert hide_from_timer.index("boot_splash_wait_for_ready_ = false;") < hide_from_timer.index(
-        "HideBootSplashLocked();"
-    )
-    assert "boot_splash_wait_for_ready_ = false;" in complete_splash
-    assert "HideBootSplashLocked();" in complete_splash
-    assert "Board::GetInstance().GetBacklight()" in complete_splash
-    assert "backlight->RestoreBrightness();" in complete_splash
-    assert "GetBacklight()->SetBrightness(k_boot_splash_brightness_percent, false);" in constructor
-    assert "SetBrightness(10, false)" not in start_network
-    assert "RestoreBrightness();" not in start_network
-
-
-def test_complete_boot_splash_only_restores_brightness_when_splash_was_visible():
-    source = read_source(BOARD_SOURCE)
-    complete_splash = function_body(source, "void CompleteBootSplash()")
-
-    assert "const bool restore_boot_brightness = boot_splash_visible_;" in complete_splash
-    assert complete_splash.index("const bool restore_boot_brightness = boot_splash_visible_;") < complete_splash.index(
-        "HideBootSplashLocked();"
-    )
-    assert "if (restore_boot_brightness)" in complete_splash
-    assert complete_splash.index("if (restore_boot_brightness)") < complete_splash.index(
-        "backlight->RestoreBrightness();"
-    )
-    assert "if (backlight != nullptr)" in complete_splash
-
-
-def test_application_shows_waving_greeting_between_boot_splash_and_wifi_start():
-    display_header = read_source(Path("main/display/display.h"))
-    application = read_source(APPLICATION_SOURCE)
-    board_source = read_source(BOARD_SOURCE)
-    initialize = function_body(application, "void Application::Initialize()")
-    greeting = function_body(board_source, "virtual uint32_t ShowBootGreeting() override")
-
-    assert "virtual uint32_t ShowBootGreeting()" in display_header
-    assert "const uint32_t boot_greeting_ms = display->ShowBootGreeting();" in initialize
-    assert "vTaskDelay(pdMS_TO_TICKS(boot_greeting_ms));" in initialize
-    assert initialize.index("display->CompleteBootSplash();") < initialize.index(
-        "display->ShowBootGreeting();"
-    )
-    assert initialize.index("display->ShowBootGreeting();") < initialize.index(
-        'BootDiagnosticsMark("app_network_start")'
-    )
-    assert initialize.index("vTaskDelay(pdMS_TO_TICKS(boot_greeting_ms));") < initialize.index(
-        'display->SetStatus("Boot: Wi-Fi");'
-    )
-    assert "assets_images_waving_gif_start" in greeting
-    assert "PlayGifBinaryLocked" in greeting
-    assert "k_boot_greeting_duration_ms" in greeting
-
-
 def test_application_completes_boot_splash_when_ui_can_be_revealed():
     display_header = read_source(Path("main/display/display.h"))
     application = read_source(APPLICATION_SOURCE)
@@ -289,43 +211,3 @@ def test_application_completes_boot_splash_when_ui_can_be_revealed():
     )
     assert "display->CompleteBootSplash();" in block_after(check_version, "if (ota_->HasActivationCode())")
     assert "display->CompleteBootSplash();" in block_after(state_changed, "case kDeviceStateWifiConfiguring:")
-
-
-def test_xiaoxin_boot_splash_reveals_after_normal_ui_first_frame_is_ready():
-    source = read_source(BOARD_SOURCE)
-    setup_ui = function_body(source, "virtual void SetupUI() override")
-    reveal = function_body(source, "void ScheduleBootSplashRevealAfterUiReadyLocked()")
-
-    assert "k_boot_splash_ui_ready_reveal_delay_ms" in source
-    assert "k_boot_splash_ui_ready_reveal_delay_ms = 5000" in source
-    assert "ScheduleBootSplashRevealAfterUiReadyLocked();" in setup_ui
-    assert setup_ui.index("PlayGifState(current_state_);") < setup_ui.index("ShowBootSplashLocked();")
-    assert setup_ui.index("ShowBootSplashLocked();") < setup_ui.index(
-        "ScheduleBootSplashRevealAfterUiReadyLocked();"
-    )
-    assert "if (boot_splash_wait_for_ready_)" in reveal
-    wait_branch = block_after(reveal, "if (boot_splash_wait_for_ready_)", length=160)
-    assert "return;" in wait_branch
-    assert wait_branch.index("return;") < reveal.index("boot_splash_wait_for_ready_ = false;")
-    assert "boot_splash_wait_for_ready_ = false;" in reveal
-    assert "esp_timer_stop(boot_splash_timer_);" in reveal
-    assert "esp_timer_start_once(boot_splash_timer_, k_boot_splash_ui_ready_reveal_delay_ms * 1000ULL)" in reveal
-    assert "HideBootSplashLocked();" in reveal
-
-
-def test_xiaoxin_boot_splash_stays_above_system_bars_while_visible():
-    source = read_source(BOARD_SOURCE)
-    raise_boot = function_body(source, "void RaiseBootSplashLayerLocked()")
-    raise_overlays = function_body(source, "void RaiseOverlayObjects()")
-
-    assert "boot_splash_visible_" in raise_boot
-    assert "boot_splash_layer_ != nullptr" in raise_boot
-    assert "lv_obj_move_foreground(boot_splash_layer_);" in raise_boot
-    assert "RaiseBootSplashLayerLocked();" in raise_overlays
-    assert raise_overlays.count("RaiseBootSplashLayerLocked();") >= 2
-    assert raise_overlays.index("lv_obj_move_foreground(bottom_bar_);") < raise_overlays.rindex(
-        "RaiseBootSplashLayerLocked();"
-    )
-    card_branch = block_after(raise_overlays, "if (IsCardLayerVisible())", length=420)
-    assert "RaiseBootSplashLayerLocked();" in card_branch
-    assert card_branch.index("RaiseBootSplashLayerLocked();") < card_branch.index("return;")

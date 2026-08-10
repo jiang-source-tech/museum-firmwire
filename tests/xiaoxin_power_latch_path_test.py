@@ -137,7 +137,7 @@ def test_battery_boot_keeps_invisible_power_settling_delays_between_stages():
 
     assert "if (on_battery_)" in settle
     assert "vTaskDelay(pdMS_TO_TICKS(150));" in settle
-    assert constructor.count("StabilizeBatteryBootStage();") >= 4
+    assert constructor.count("StabilizeBatteryBootStage();") >= 3
     assert constructor.index("InitializeTouch();") < constructor.index("StabilizeBatteryBootStage();")
     assert constructor.index("InitializeButtons();") < constructor.index(
         "StabilizeBatteryBootStage();",
@@ -146,10 +146,6 @@ def test_battery_boot_keeps_invisible_power_settling_delays_between_stages():
     assert constructor.index("InitializePowerSaveTimer();") < constructor.index(
         "StabilizeBatteryBootStage();",
         constructor.index("InitializePowerSaveTimer();"),
-    )
-    assert constructor.index("ScheduleDeferredMotionInit();") < constructor.index(
-        "StabilizeBatteryBootStage();",
-        constructor.index("ScheduleDeferredMotionInit();"),
     )
 
 

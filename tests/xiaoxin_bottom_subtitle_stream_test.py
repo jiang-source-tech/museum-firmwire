@@ -4,7 +4,7 @@ from pathlib import Path
 LCD_HEADER = Path("main/display/lcd_display.h")
 LCD_SOURCE = Path("main/display/lcd_display.cc")
 APPLICATION_SOURCE = Path("main/application.cc")
-PAOPAO_DISPLAY_SOURCE = Path(
+BOARD_DISPLAY_SOURCE = Path(
     "main/boards/waveshare/esp32-s3-touch-lcd-1.46/esp32-s3-touch-lcd-1.46.cc"
 )
 
@@ -152,17 +152,17 @@ def test_multiline_subtitles_remain_wrapped_and_share_the_same_text_entry():
 
 def test_all_subtitle_sources_keep_using_the_unified_display_entry():
     application = read_source(APPLICATION_SOURCE)
-    paopao = read_source(PAOPAO_DISPLAY_SOURCE)
+    board_display = read_source(BOARD_DISPLAY_SOURCE)
     show_activation = function_body(application, "void Application::ShowActivationCode")
     alert = function_body(application, "void Application::Alert")
-    paopao_set_message = function_body(
-        paopao,
+    board_set_message = function_body(
+        board_display,
         "virtual void SetChatMessage(const char* role, const char* content) override",
     )
 
     assert "Alert(Lang::Strings::ACTIVATION, message.c_str()" in show_activation
     assert 'display->SetChatMessage("system", message);' in alert
-    assert "LcdDisplay::SetChatMessage(role, content);" in paopao_set_message
+    assert "LcdDisplay::SetChatMessage(role, content);" in board_set_message
 
 
 def test_sentence_update_only_refreshes_subtitle_text():

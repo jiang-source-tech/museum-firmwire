@@ -1,6 +1,5 @@
 #include <cassert>
 
-#include "audio/notification_tts_origin.h"
 #include "audio/tts_playback_session.h"
 
 struct CompletionHarness {
@@ -20,12 +19,12 @@ struct CompletionHarness {
     }
 };
 
-static void idle_notification_done_returns_idle_without_listening() {
+static void idle_tts_done_returns_idle_without_listening() {
     TtsPlaybackSession session;
     CompletionHarness harness;
-    const auto start = session.Start("notification-done", TtsReturnState::kIdle);
+    const auto start = session.Start("idle-done", TtsReturnState::kIdle);
     assert(session.MarkPlaying(start.generation));
-    assert(session.BeginDraining("notification-done", start.generation));
+    assert(session.BeginDraining("idle-done", start.generation));
 
     harness.Apply(session.Complete(start.generation, "done", ""));
 
@@ -34,10 +33,10 @@ static void idle_notification_done_returns_idle_without_listening() {
     assert(harness.listen_start_count == 0);
 }
 
-static void idle_notification_error_returns_idle_without_listening() {
+static void idle_tts_error_returns_idle_without_listening() {
     TtsPlaybackSession session;
     CompletionHarness harness;
-    const auto start = session.Start("notification-error", TtsReturnState::kIdle);
+    const auto start = session.Start("idle-error", TtsReturnState::kIdle);
 
     harness.Apply(session.Fail(start.generation, "decode_failed"));
 
@@ -77,34 +76,10 @@ static void stale_generation_cannot_restore_its_return_state() {
     assert(harness.listen_start_count == 1);
 }
 
-static void pending_notification_origin_survives_old_close_and_returns_idle() {
-    for (const bool fail : {false, true}) {
-        NotificationTtsOrigin origin;
-        CompletionHarness harness;
-        const auto token = origin.BeginOpenIntent();
-        assert(origin.IsCurrent(token));
-        assert(origin.ConsumeForTtsStart());
-
-        TtsPlaybackSession session;
-        const auto start = session.Start("notification", TtsReturnState::kIdle);
-        if (fail) {
-            harness.Apply(session.Fail(start.generation, "decode_failed"));
-        } else {
-            assert(session.MarkPlaying(start.generation));
-            assert(session.BeginDraining("notification", start.generation));
-            harness.Apply(session.Complete(start.generation, "done", ""));
-        }
-        assert(harness.state == TtsReturnState::kIdle);
-        assert(!harness.voice_processing_enabled);
-        assert(harness.listen_start_count == 0);
-    }
-}
-
 int main() {
-    idle_notification_done_returns_idle_without_listening();
-    idle_notification_error_returns_idle_without_listening();
+    idle_tts_done_returns_idle_without_listening();
+    idle_tts_error_returns_idle_without_listening();
     conversational_tts_restores_captured_listening_state();
     stale_generation_cannot_restore_its_return_state();
-    pending_notification_origin_survives_old_close_and_returns_idle();
     return 0;
 }

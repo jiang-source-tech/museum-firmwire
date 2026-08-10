@@ -5,8 +5,9 @@ config OTA_URL
     default ""
     help
         The application will access this URL to check for new firmwares and server address.
-        Production builds must set a public HTTPS /xiaoxin/ota/ URL. The tracked
-        Xiaoxin bootstrap config explicitly opts into its isolated HTTP endpoint.
+        Release builds must set a real public HTTPS /museum/ota/ URL after the
+        museum deployment endpoint is confirmed. The tracked defaults leave this
+        empty so a device cannot silently contact an old project instance.
 
 config OTA_PERIODIC_CHECK_INTERVAL_SECONDS
     int "Periodic OTA version check interval (seconds)"

@@ -1,8 +1,9 @@
 from pathlib import Path
 
 
-EXPECTED_OTA_URL = "http://124.221.253.206:8003/xiaoxin/ota/"
+EXPECTED_OTA_URL = ""
 LEGACY_OTA_URLS = (
+    "http://124.221.253.206:8003/xiaoxin/ota/",
     "http://124.222.121.103:8003/xiaozhi/ota/",
     "http://121.43.33.0:8003/xiaoxin/ota/",
     "https://api.tenclass.net/xiaozhi/ota/",
@@ -32,7 +33,7 @@ def read_config_value(path: Path, key: str) -> str:
     raise AssertionError(f"{key} not found in {path}")
 
 
-def test_ota_url_matches_private_server() -> None:
+def test_tracked_ota_url_requires_deployment_configuration() -> None:
     repo_root = Path(__file__).resolve().parents[1]
 
     assert read_config_value(repo_root / "sdkconfig.defaults", "CONFIG_OTA_URL") == EXPECTED_OTA_URL
@@ -49,14 +50,15 @@ def test_ota_url_matches_private_server() -> None:
     )
 
 
-def test_tracked_http_bootstrap_configs_explicitly_opt_into_development_mode() -> None:
+def test_tracked_ota_configs_do_not_allow_insecure_http() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     for path in (
         repo_root / "sdkconfig",
         repo_root / "sdkconfig.defaults",
         repo_root / "sdkconfig.defaults.xiaozhi",
     ):
-        assert read_config_value(path, "CONFIG_OTA_ALLOW_INSECURE_HTTP") == "y"
+        source = path.read_text(encoding="utf-8")
+        assert "CONFIG_OTA_ALLOW_INSECURE_HTTP=y" not in source
 
     kconfig = (repo_root / "main" / "Kconfig.projbuild").read_text(encoding="utf-8")
     block = kconfig[kconfig.index("config OTA_ALLOW_INSECURE_HTTP") :]

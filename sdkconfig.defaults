@@ -1,11 +1,11 @@
-# AI Pet S3 sdkconfig 默认配置
-# 基于小智架构，针对 ESP32-S3-DevKitC-1 N16R8 硬件
+# 金潮杯博物馆 ESP32-S3 默认配置
+# 基于小智传输基座，针对微雪 ESP32-S3-Touch-LCD-1.46
 
 # ── 编译目标 ─────────────────────────────────────────────────
 CONFIG_IDF_TARGET="esp32s3"
 
 # ── Board 选择 ────────────────────────────────────────────────
-CONFIG_BOARD_TYPE_AI_PET_S3=y
+CONFIG_BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_LCD_1_46=y
 
 # ── 语言 ──────────────────────────────────────────────────────
 CONFIG_LANGUAGE_ZH_CN=y
@@ -15,12 +15,16 @@ CONFIG_USE_AUDIO_PROCESSOR=y
 CONFIG_USE_DEVICE_AEC=n
 CONFIG_USE_SERVER_AEC=n
 
-# ── 唤醒词 (AFE WakeNet "你好小芯", 需要 PSRAM) ──────────────
-CONFIG_USE_AFE_WAKE_WORD=y
-# CONFIG_USE_CUSTOM_WAKE_WORD is not set
+# ── 唤醒词 (MultiNet "你好讲解员", 需要 PSRAM) ───────────────
+# CONFIG_USE_AFE_WAKE_WORD is not set
+CONFIG_USE_CUSTOM_WAKE_WORD=y
+CONFIG_CUSTOM_WAKE_WORD="ni hao jiang jie yuan"
+CONFIG_CUSTOM_WAKE_WORD_DISPLAY="你好讲解员"
+CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=20
 CONFIG_SEND_WAKE_WORD_DATA=y
-CONFIG_SR_WN_WN9_NIHAOXIAOXIN_TTS=y
-CONFIG_SR_MN_CN_NONE=y
+# CONFIG_SR_WN_WN9_NIHAOXIAOXIN_TTS is not set
+# CONFIG_SR_MN_CN_NONE is not set
+CONFIG_SR_MN_CN_MULTINET7_QUANT=y
 
 # ── PSRAM 配置 ────────────────────────────────────────────────
 CONFIG_SPIRAM=y
@@ -46,16 +50,13 @@ CONFIG_USE_DEFAULT_MESSAGE_STYLE=y
 # ── Assets ────────────────────────────────────────────────────
 CONFIG_FLASH_DEFAULT_ASSETS=y
 
-# ── OTA URL（开发环境占位；生产必须配置 HTTPS 域名）──────────
-# 非 HTTPS URL 默认会被固件拒绝；仅受控开发网络可显式启用 HTTP。
-CONFIG_OTA_URL="http://124.221.253.206:8003/xiaoxin/ota/"
+# ── OTA URL（发布前必须配置真实 HTTPS 地址）──────────────────
+CONFIG_OTA_URL=""
 CONFIG_OTA_PERIODIC_CHECK_INTERVAL_SECONDS=21600
 CONFIG_OTA_PERIODIC_CHECK_JITTER_SECONDS=900
 CONFIG_OTA_RELEASE_CHANNEL="stable"
 CONFIG_OTA_MIN_BATTERY_PERCENT=40
-# Development bootstrap only: production release configuration must override
-# CONFIG_OTA_URL with HTTPS and leave this option disabled.
-CONFIG_OTA_ALLOW_INSECURE_HTTP=y
+# CONFIG_OTA_ALLOW_INSECURE_HTTP is not set
 # CONFIG_OTA_ALLOW_LEGACY_UNSIGNED_OFFERS is not set
 
 # ── FreeRTOS ──────────────────────────────────────────────────

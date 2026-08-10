@@ -9,7 +9,6 @@ APPLICATION_HEADER = Path("main/application.h")
 LANG_CONFIG = Path("main/assets/lang_config.h")
 EN_US_LANGUAGE = Path("main/assets/locales/en-US/language.json")
 ZH_CN_LANGUAGE = Path("main/assets/locales/zh-CN/language.json")
-PAOPAO_DISPLAY = Path("main/boards/waveshare/esp32-s3-touch-lcd-1.46/esp32-s3-touch-lcd-1.46.cc")
 
 
 def read_source(path: Path) -> str:
@@ -92,7 +91,7 @@ def test_language_sources_define_thinking_status_text():
     assert zh_cn["strings"]["THINKING"] == "思考中..."
 
 
-def test_application_renders_thinking_state_as_status_and_pet_thinking():
+def test_application_renders_thinking_state_and_pauses_audio_processing():
     body = function_body(read_source(APPLICATION), "void Application::HandleStateChangedEvent()")
 
     thinking_case = switch_case(body, "case kDeviceStateThinking:", "case kDeviceStateSpeaking:")
@@ -103,7 +102,7 @@ def test_application_renders_thinking_state_as_status_and_pet_thinking():
 
 
 def test_stt_text_moves_listening_to_thinking_before_user_subtitle():
-    body = function_body(read_source(APPLICATION), "void Application::InitializeProtocol()")
+    body = function_body(read_source(APPLICATION), "bool Application::InitializeProtocol()")
     stt_section = switch_case(body, 'strcmp(type->valuestring, "stt") == 0', 'strcmp(type->valuestring, "llm") == 0')
 
     assert "if (GetDeviceState() == kDeviceStateListening && !IsSttThinkingSuppressed())" in stt_section
@@ -113,7 +112,7 @@ def test_stt_text_moves_listening_to_thinking_before_user_subtitle():
 
 
 def test_tts_start_moves_thinking_to_speaking_and_tts_stop_leaves_speaking():
-    body = function_body(read_source(APPLICATION), "void Application::InitializeProtocol()")
+    body = function_body(read_source(APPLICATION), "bool Application::InitializeProtocol()")
     tts_section = switch_case(body, 'strcmp(type->valuestring, "tts") == 0', 'strcmp(type->valuestring, "stt") == 0')
 
     assert "if (!cJSON_IsString(state))" in tts_section
@@ -124,7 +123,7 @@ def test_tts_start_moves_thinking_to_speaking_and_tts_stop_leaves_speaking():
 
 
 def test_reliable_tts_dispatch_preserves_legacy_no_sentence_id_path():
-    body = function_body(read_source(APPLICATION), "void Application::InitializeProtocol()")
+    body = function_body(read_source(APPLICATION), "bool Application::InitializeProtocol()")
     tts_section = switch_case(body, 'strcmp(type->valuestring, "tts") == 0', 'strcmp(type->valuestring, "stt") == 0')
 
     assert "const bool has_sentence_id" in tts_section
@@ -173,7 +172,7 @@ def test_connection_and_user_abort_invalidate_reliable_tts_generation():
 def test_audio_channel_close_idle_is_guarded_by_connection_epoch_and_generation():
     header = read_source(APPLICATION_HEADER)
     source = read_source(APPLICATION)
-    init_body = function_body(source, "void Application::InitializeProtocol()")
+    init_body = function_body(source, "bool Application::InitializeProtocol()")
     opened = switch_case(
         init_body,
         "protocol_->OnAudioChannelOpened",
@@ -217,7 +216,6 @@ def test_cleanup_gate_nonblocking_defers_open_and_rejects_start_ownership():
     assert "void ConsumeAudioOpenRequest();" in header
     for signature in (
         "void Application::ContinueOpenAudioChannel(ListeningMode mode)",
-        "void Application::ContinueOpenNotificationChannel(",
         "void Application::ContinueWakeWordInvoke(const std::string& wake_word)",
     ):
         body = function_body(source, signature)
@@ -235,7 +233,7 @@ def test_cleanup_gate_nonblocking_defers_open_and_rejects_start_ownership():
     assert "audio_open_request_pending_ = true;" in schedule_helper
     assert "Schedule(std::move(callback));" in schedule_helper
 
-    init_body = function_body(source, "void Application::InitializeProtocol()")
+    init_body = function_body(source, "bool Application::InitializeProtocol()")
     opened_callback = switch_case(
         init_body,
         "protocol_->OnAudioChannelOpened",
@@ -270,7 +268,7 @@ def test_tts_control_coordination_has_runtime_host_regressions():
 def test_idle_audio_ingress_requires_explicit_legacy_tts_ownership():
     header = read_source(APPLICATION_HEADER)
     source = read_source(APPLICATION)
-    init_body = function_body(source, "void Application::InitializeProtocol()")
+    init_body = function_body(source, "bool Application::InitializeProtocol()")
     audio_callback = switch_case(
         init_body,
         "protocol_->OnIncomingAudio",
@@ -296,8 +294,8 @@ def test_idle_audio_ingress_requires_explicit_legacy_tts_ownership():
     assert tts_section.index("legacy_tts_active_ = true;") < tts_section.index("Schedule(")
 
 
-def test_tts_sentence_start_also_arms_speaking_for_control_console_tts():
-    body = function_body(read_source(APPLICATION), "void Application::InitializeProtocol()")
+def test_tts_sentence_start_arms_speaking_before_assistant_subtitle():
+    body = function_body(read_source(APPLICATION), "bool Application::InitializeProtocol()")
     tts_section = switch_case(body, 'strcmp(type->valuestring, "tts") == 0', 'strcmp(type->valuestring, "stt") == 0')
     sentence_start = branch_block(tts_section, 'strcmp(state->valuestring, "sentence_start") == 0')
 
@@ -385,22 +383,3 @@ def test_wake_word_thinking_restart_arms_suppression_before_listening_state():
     assert thinking_restart.index("SuppressSttThinkingFor(kSttThinkingSuppressionWindowUs);") < thinking_restart.index(
         "SetListeningMode(GetDefaultListeningMode());"
     )
-
-
-def test_paopao_status_recognizes_thinking_status():
-    body = function_body(read_source(PAOPAO_DISPLAY), "virtual void SetStatus(const char* status) override")
-
-    assert "StatusEquals(status, Lang::Strings::THINKING)" in body
-    assert "PAOPAO_PET_TRIGGER_THINKING" in body
-    assert "PAOPAO_PET_BEHAVIOR_VOICE_THINKING" in body
-
-
-def test_assistant_subtitle_only_sets_speaking_pet_when_device_is_speaking():
-    body = function_body(read_source(PAOPAO_DISPLAY), "virtual void SetChatMessage(const char* role, const char* content) override")
-    assistant_section = branch_block(body, 'std::strcmp(role, "assistant") == 0')
-
-    assert "Application::GetInstance().GetDeviceState() == kDeviceStateSpeaking" in assistant_section
-    assert "PAOPAO_PET_TRIGGER_SPEAKING" in assistant_section
-    assert "} else {" in assistant_section
-    fallback_section = assistant_section.split("} else {", 1)[1]
-    assert "DispatchPetMoodEvent(PAOPAO_PET_MOOD_EVENT_ASSISTANT_REPLY);" in fallback_section

@@ -73,7 +73,7 @@ def test_low_power_clock_uses_reference_sprite_coordinate_mapping():
     for snippet in [
         "const int16_t x = LowPowerRefX((int16_t)(190 + i * 6U));",
         "const int16_t y = LowPowerRefY((int16_t)(90 - j * 4U));",
-        "lv_obj_align(cell, LV_ALIGN_TOP_LEFT, LowPowerRefX(186 + i * 30), LowPowerRefY(2));",
+        "lv_obj_align(cell, LV_ALIGN_TOP_LEFT, LowPowerRefX(200 + i * 30), LowPowerRefY(2));",
         "lv_obj_align(low_power_clock_left_red_dash_, LV_ALIGN_TOP_LEFT, LowPowerRefX(54), LowPowerRefY(120));",
         "lv_obj_align(low_power_clock_left_gray_panel_, LV_ALIGN_TOP_LEFT, LowPowerRefX(0), LowPowerRefY(145));",
         "lv_obj_align(low_power_clock_center_rule_, LV_ALIGN_TOP_LEFT, LowPowerRefX(180), LowPowerRefY(136));",
@@ -81,7 +81,7 @@ def test_low_power_clock_uses_reference_sprite_coordinate_mapping():
         "lv_obj_align(low_power_clock_blue_top_block_, LV_ALIGN_TOP_LEFT, LowPowerRefX(136), LowPowerRefY(0));",
         "lv_obj_align(low_power_clock_blue_bottom_block_, LV_ALIGN_TOP_LEFT, LowPowerRefX(136), LowPowerRefY(224));",
         "lv_obj_align(low_power_clock_top_dial_, LV_ALIGN_TOP_LEFT, LowPowerRefX(372 - 28), LowPowerRefY(76 - 28));",
-        "lv_obj_align(low_power_clock_title_label_, LV_ALIGN_TOP_LEFT, LowPowerRefX(190), LowPowerRefY(104));",
+        "lv_obj_align(low_power_clock_title_label_, LV_ALIGN_TOP_LEFT, LowPowerRefX(186), LowPowerRefY(104));",
         "lv_obj_align(low_power_clock_second_label_, LV_ALIGN_TOP_LEFT, LowPowerRefX(24), LowPowerRefY(124));",
     ]:
         assert compact(snippet) in compact_source
@@ -107,7 +107,7 @@ def test_low_power_clock_hint_keeps_smaller_theme_font():
     source = read_source()
     init_section = source[
         source.index("void InitializeLowPowerClockLayerLocked()"):
-        source.index("void InitializeCardPagerLayer()", source.index("void InitializeLowPowerClockLayerLocked()"))
+        source.index("void PollTouch", source.index("void InitializeLowPowerClockLayerLocked()"))
     ]
 
     assert "const lv_font_t* hint_font = lvgl_theme != nullptr && lvgl_theme->text_font() != nullptr" in init_section
@@ -184,7 +184,7 @@ def test_power_save_mode_remains_task3_timer_boundary():
     source = read_source()
     power_save_section = source[
         source.index("virtual void SetPowerSaveMode(bool on) override {"):
-        source.index("void DispatchPetTrigger", source.index("virtual void SetPowerSaveMode(bool on) override {"))
+        source.index("void AttachTouch", source.index("virtual void SetPowerSaveMode(bool on) override {"))
     ]
     assert "LvglDisplay::SetPowerSaveMode(on);" in power_save_section
     assert "ShowLowPowerClockScreen();" not in power_save_section
@@ -271,7 +271,7 @@ def test_low_power_clock_ports_wave_reference_static_effects():
     source = read_source()
     init_section = source[
         source.index("void InitializeLowPowerClockLayerLocked()"):
-        source.index("void InitializeCardPagerLayer()", source.index("void InitializeLowPowerClockLayerLocked()"))
+        source.index("void PollTouch", source.index("void InitializeLowPowerClockLayerLocked()"))
     ]
 
     assert "InitializeLowPowerWaveReferenceBlocksLocked(hint_font);" in init_section
@@ -295,12 +295,12 @@ def test_low_power_clock_ports_wave_reference_static_effects():
     assert 'lv_label_set_text(low_power_clock_micro_label_, "mil");' not in source
     assert '"AMOLED"' not in source
     assert '"*HRS*"' not in source
-    assert "static constexpr const char* k_runtime_letters[] = {\"X\", \"i\", \"a\", \"o\", \"X\", \"i\", \"n\"};" in source
+    assert "static constexpr const char* k_runtime_letters[] = {\"M\", \"U\", \"S\", \"E\", \"U\", \"M\"};" in source
     assert "lv_obj_t* cell = CreateLowPowerBlock(low_power_clock_layer_, LowPowerRefLen(26), LowPowerRefLen(26), 0x30363D, LowPowerClockOpaPercent(82));" in source
-    assert "lv_obj_align(cell, LV_ALIGN_TOP_LEFT, LowPowerRefX(186 + i * 30), LowPowerRefY(2));" in source
+    assert "lv_obj_align(cell, LV_ALIGN_TOP_LEFT, LowPowerRefX(200 + i * 30), LowPowerRefY(2));" in source
     assert "lv_label_set_text(letter, k_runtime_letters[i]);" in source
     assert 'lv_label_set_text(low_power_clock_mode_label_, "runtime");' not in source
-    assert 'lv_label_set_text(low_power_clock_title_label_, "HZCU TIME");' in source
+    assert 'lv_label_set_text(low_power_clock_title_label_, "MUSEUM TIME");' in source
     assert '"VOLOS TIME"' not in source
     assert 'lv_label_set_text(low_power_clock_probe_label_, "CAN YOU READ THIS");' in source
 

@@ -70,9 +70,6 @@ public:
     virtual void CloseAudioChannel(bool send_goodbye = true) = 0;
     virtual bool IsAudioChannelOpened() const = 0;
     virtual bool SendAudio(std::unique_ptr<AudioStreamPacket> packet) = 0;
-    virtual void SendXiaoxinAck(const std::string& delivery_id,
-                                const std::string& state,
-                                const std::string& reason = "");
     void SendTtsAck(const std::string& state,
                     const std::string& sentence_id,
                     const std::string& reason = "");

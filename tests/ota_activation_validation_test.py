@@ -66,8 +66,8 @@ def test_pending_ota_confirmation_uses_local_runtime_health_not_backend_reachabi
     )
 
     ota_failure = activation.index("if (!ota_check_succeeded_)")
-    doorbell_config = activation.index("const auto& doorbell_config")
-    ota_failure_block = activation[ota_failure:doorbell_config]
+    protocol_start = activation.index("const bool protocol_started")
+    ota_failure_block = activation[ota_failure:protocol_start]
     assert "return;" not in ota_failure_block
     assert "continuing without a successful OTA check" in ota_failure_block
 
@@ -76,7 +76,6 @@ def test_pending_ota_confirmation_uses_local_runtime_health_not_backend_reachabi
         "ota_check_succeeded_ = false;",
         "CheckNewVersion();",
         "!ota_check_succeeded_",
-        "doorbell_configuration_ready",
         "const bool protocol_started = InitializeProtocol();",
         "if (!protocol_started)",
         "ProbeOtaTransportHealth()",

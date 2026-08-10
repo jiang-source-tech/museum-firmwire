@@ -8,7 +8,6 @@
 
 #include <esp_err.h>
 #include "board.h"
-#include "doorbell_config.h"
 
 // The immutable identity of the firmware currently running on this device.
 // It is deliberately separate from FirmwareOffer so the compatibility rule is
@@ -60,7 +59,6 @@ public:
     bool HasActivationChallenge() { return has_activation_challenge_; }
     bool HasNewVersion() { return has_new_version_; }
     bool HasMqttConfig() { return has_mqtt_config_; }
-    bool HasDoorbellMqttConfig() const { return doorbell_mqtt_config_.IsUsable(); }
     bool HasWebsocketConfig() { return has_websocket_config_; }
     bool HasActivationCode() { return has_activation_code_; }
     bool HasServerTime() { return has_server_time_; }
@@ -76,7 +74,6 @@ public:
     const FirmwareOffer& GetFirmwareOffer() const { return firmware_offer_; }
     const std::string& GetActivationMessage() const { return activation_message_; }
     const std::string& GetActivationCode() const { return activation_code_; }
-    const DoorbellMqttConfig& GetDoorbellMqttConfig() const { return doorbell_mqtt_config_; }
     std::string GetCheckVersionUrl();
 
 private:
@@ -89,7 +86,6 @@ private:
     bool has_activation_code_ = false;
     bool has_serial_number_ = false;
     bool has_activation_challenge_ = false;
-    DoorbellMqttConfig doorbell_mqtt_config_;
     std::string current_version_;
     std::string firmware_version_;
     std::string firmware_url_;

@@ -31,10 +31,10 @@ def test_production_kconfig_requires_https_and_bootstrap_http_is_explicit() -> N
         block = kconfig[kconfig.index(f"config {option}") :]
         assert "default n" in block
 
-    # The tracked private-IP bootstrap is intentionally a development profile;
-    # it must never silently enable unsigned offers.
+    # Tracked museum defaults intentionally leave the endpoint unset and never
+    # silently enable insecure HTTP or unsigned offers.
     for config in (SDKCONFIG.read_text(encoding="utf-8"), SDKCONFIG_DEFAULTS.read_text(encoding="utf-8")):
-        assert "CONFIG_OTA_ALLOW_INSECURE_HTTP=y" in config
+        assert "CONFIG_OTA_ALLOW_INSECURE_HTTP=y" not in config
         assert "# CONFIG_OTA_ALLOW_LEGACY_UNSIGNED_OFFERS is not set" in config
 
     check_version = function_body(source, "esp_err_t Ota::CheckVersion()")

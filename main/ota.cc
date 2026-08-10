@@ -35,11 +35,25 @@ namespace {
 constexpr const char* kOtaPartitionLayoutId = "xiaoxin-ota-16m-v1";
 
 constexpr const char* kLegacyOtaUrls[] = {
+    "http://124.221.253.206:8003/xiaoxin/ota/",
     "http://124.222.121.103:8003/xiaozhi/ota/",
     "http://121.43.33.0:8003/xiaozhi/ota/",
     "http://121.43.33.0:8003/xiaoxin/ota/",
     "https://api.tenclass.net/xiaozhi/ota/",
 };
+
+bool IsMuseumWebsocketUrl(const std::string& url) {
+    return (url.rfind("ws://", 0) == 0 || url.rfind("wss://", 0) == 0) &&
+           url.find("/museum/v1/") != std::string::npos;
+}
+
+bool IsLegacyWebsocketUrl(const std::string& url) {
+    return url.find("/xiaozhi/v1/") != std::string::npos ||
+           url.find("/xiaoxin/v1/") != std::string::npos ||
+           url.find("124.221.253.206") != std::string::npos ||
+           url.find("124.222.121.103") != std::string::npos ||
+           url.find("api.tenclass.net") != std::string::npos;
+}
 
 bool IsLegacyOtaUrl(const std::string& url) {
     if (url.find("/xiaozhi/ota") != std::string::npos) {
@@ -342,6 +356,14 @@ private:
 }
 
 Ota::Ota() {
+    Settings websocket_settings("websocket", true);
+    const std::string persisted_websocket_url = websocket_settings.GetString("url");
+    if (!persisted_websocket_url.empty() &&
+        (!IsMuseumWebsocketUrl(persisted_websocket_url) ||
+         IsLegacyWebsocketUrl(persisted_websocket_url))) {
+        ESP_LOGW(TAG, "Clearing persisted non-museum WebSocket URL");
+        websocket_settings.EraseKey("url");
+    }
 #ifdef ESP_EFUSE_BLOCK_USR_DATA
     // Read Serial Number from efuse user_data
     uint8_t serial_number[33] = {0};
@@ -471,25 +493,6 @@ esp_err_t Ota::CheckVersion() {
         }
     }
 
-    cJSON *doorbell_mqtt = cJSON_GetObjectItem(root, "doorbell_mqtt");
-    if (cJSON_IsObject(doorbell_mqtt)) {
-        DoorbellMqttConfig config = ParseDoorbellMqttConfig(doorbell_mqtt);
-        if (config.version != 1) {
-            doorbell_mqtt_config_ = LoadDoorbellMqttConfig();
-        } else if (!config.enabled) {
-            DisableDoorbellMqttConfig();
-            doorbell_mqtt_config_ = DoorbellMqttConfig{};
-        } else {
-            if (SaveDoorbellMqttConfig(config)) {
-                doorbell_mqtt_config_ = std::move(config);
-            } else {
-                doorbell_mqtt_config_ = LoadDoorbellMqttConfig();
-            }
-        }
-    } else {
-        doorbell_mqtt_config_ = LoadDoorbellMqttConfig();
-    }
-
     has_mqtt_config_ = false;
     cJSON *mqtt = cJSON_GetObjectItem(root, "mqtt");
     if (cJSON_IsObject(mqtt)) {
@@ -518,6 +521,13 @@ esp_err_t Ota::CheckVersion() {
         cJSON *item = NULL;
         cJSON_ArrayForEach(item, websocket) {
             if (cJSON_IsString(item)) {
+                if (strcmp(item->string, "url") == 0 &&
+                    (!IsMuseumWebsocketUrl(item->valuestring) ||
+                     IsLegacyWebsocketUrl(item->valuestring))) {
+                    ESP_LOGW(TAG, "Rejecting non-museum WebSocket URL from OTA response");
+                    settings.EraseKey("url");
+                    continue;
+                }
                 if (settings.GetString(item->string) != item->valuestring) {
                     settings.SetString(item->string, item->valuestring);
                 }
@@ -527,7 +537,9 @@ esp_err_t Ota::CheckVersion() {
                 }
             }
         }
-        has_websocket_config_ = true;
+        const std::string saved_url = settings.GetString("url");
+        has_websocket_config_ = IsMuseumWebsocketUrl(saved_url) &&
+                                !IsLegacyWebsocketUrl(saved_url);
     } else {
         ESP_LOGI(TAG, "No websocket section found!");
     }
@@ -610,6 +622,9 @@ bool Ota::IsRunningPartitionPendingVerification() {
     auto partition = esp_ota_get_running_partition();
     if (partition == nullptr) {
         ESP_LOGE(TAG, "Failed to get running OTA partition");
+        return false;
+    }
+    if (partition->subtype == ESP_PARTITION_SUBTYPE_APP_FACTORY) {
         return false;
     }
 

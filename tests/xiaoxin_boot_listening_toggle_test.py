@@ -40,3 +40,30 @@ def test_boot_toggle_from_listening_returns_to_idle_without_channel_close_callba
     assert "CloseAudioChannel()" in listening_branch
     assert "SetDeviceState(kDeviceStateIdle)" in listening_branch
 
+
+def test_listening_state_clears_stale_chat_subtitles_and_museum_state_stays_off_chat_bar():
+    source = read_source(APPLICATION_SOURCE)
+    state_changed = function_body(source, "void Application::HandleStateChangedEvent()")
+    listening_branch = branch_between(
+        state_changed,
+        "case kDeviceStateListening:",
+        "case kDeviceStateThinking:",
+    )
+    incoming_json = function_body(
+        source,
+        "protocol_->OnIncomingJson([this, display](const cJSON* root)",
+    )
+    museum_branch = branch_between(
+        incoming_json,
+        'strcmp(type->valuestring, "museum_state") == 0',
+        'strcmp(type->valuestring, "mcp") == 0',
+    )
+
+    assert "display->ClearChatMessages();" in listening_branch
+    assert listening_branch.index("display->ClearChatMessages();") < listening_branch.index(
+        "display->SetStatus(Lang::Strings::LISTENING);"
+    )
+    assert "BuildMuseumStateDisplayText" in museum_branch
+    assert "display->SetMuseumState(message.c_str());" in museum_branch
+    assert "SetChatMessage" not in museum_branch
+

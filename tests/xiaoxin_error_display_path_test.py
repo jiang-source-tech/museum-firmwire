@@ -70,7 +70,7 @@ def test_idle_state_keeps_visible_bottom_error_message():
 
 def test_audio_channel_closed_defers_chat_cleanup_to_guarded_idle_state():
     source = read_source(APPLICATION_SOURCE)
-    init_body = function_body(source, "void Application::InitializeProtocol()")
+    init_body = function_body(source, "bool Application::InitializeProtocol()")
     close_start = init_body.index("protocol_->OnAudioChannelClosed")
     close_end = init_body.index("protocol_->OnIncomingJson", close_start)
     close_block = init_body[close_start:close_end]

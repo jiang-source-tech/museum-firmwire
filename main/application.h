@@ -18,11 +18,8 @@
 #include "audio_service.h"
 #include "audio/tts_playback_session.h"
 #include "audio/tts_ownership_gate.h"
-#include "audio/notification_tts_origin.h"
 #include "device_state.h"
 #include "device_state_machine.h"
-#include "device_location_heartbeat.h"
-#include "xiaoxin_overview_authority_state.h"
 
 // Main event bits
 #define MAIN_EVENT_SCHEDULE             (1 << 0)
@@ -38,7 +35,6 @@
 #define MAIN_EVENT_START_LISTENING      (1 << 10)
 #define MAIN_EVENT_STOP_LISTENING       (1 << 11)
 #define MAIN_EVENT_STATE_CHANGED        (1 << 12)
-#define MAIN_EVENT_NOTIFICATION_WAKE    (1 << 13)
 #define MAIN_EVENT_TTS_AUDIO_PUMP        (1 << 14)
 
 
@@ -111,11 +107,6 @@ public:
      * Sends MAIN_EVENT_STOP_LISTENING to be handled in Run()
      */
     void StopListening();
-    void WakeForNotification();
-    void HandleXiaoxinOverviewMqttMessage(
-        const std::string& payload,
-        const std::string& expected_device);
-
     void Reboot();
     void WakeWordInvoke(const std::string& wake_word);
     bool UpgradeFirmware(const std::string& url, const std::string& version = "");
@@ -153,20 +144,17 @@ private:
     TtsOwnershipGate tts_ownership_gate_;
     TtsPlaybackSession tts_playback_session_;
     bool legacy_tts_active_ = false;
-    NotificationTtsOrigin notification_tts_origin_;
     uint32_t tts_connection_epoch_ = 0;
     bool audio_open_request_pending_ = false;
     int64_t tts_prepare_started_us_ = 0;
     std::unique_ptr<Ota> ota_;
     OtaPendingValidationPolicy ota_pending_validation_policy_;
-    DeviceLocationHeartbeat location_heartbeat_;
 
     bool has_server_time_ = false;
     bool aborted_ = false;
     bool assets_version_checked_ = false;
     bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
     int64_t suppress_stt_thinking_until_us_ = 0;
-    XiaoxinOverviewAuthorityState overview_authority_;
     int clock_ticks_ = 0;
     bool network_connected_ = false;
     uint32_t periodic_ota_check_elapsed_seconds_ = 0;
@@ -189,14 +177,11 @@ private:
     void HandleToggleChatEvent();
     void HandleStartListeningEvent();
     void HandleStopListeningEvent();
-    void HandleNotificationWakeEvent();
     void HandleNetworkConnectedEvent();
     void HandleNetworkDisconnectedEvent();
     void HandleActivationDoneEvent();
     void HandleWakeWordDetectedEvent();
     void ContinueOpenAudioChannel(ListeningMode mode);
-    void ContinueOpenNotificationChannel(
-        NotificationTtsOrigin::Token notification_token);
     void ContinueWakeWordInvoke(const std::string& wake_word);
     bool DeferUntilTtsCleanupComplete(std::function<void()>&& callback);
     void ScheduleAudioOpenRequest(std::function<void()>&& callback);
@@ -230,10 +215,6 @@ private:
                          const std::string& reason);
     TtsReturnState ReliableTtsReturnStateForStart() const;
     void SetDeviceStateIfTtsGenerationIdle(uint32_t generation, DeviceState state);
-    void HandleXiaoxinEvent(const cJSON* root);
-    void HandleXiaoxinOverviewUpdate(const cJSON* root,
-                                     XiaoxinOverviewSource source,
-                                     int revision);
     void ShowActivationCode(const std::string& code, const std::string& message);
     void SetListeningMode(ListeningMode mode);
     ListeningMode GetDefaultListeningMode() const;

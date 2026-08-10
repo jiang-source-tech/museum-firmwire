@@ -5,22 +5,18 @@
 #include "audio_codec.h"
 #include "mqtt_protocol.h"
 #include "websocket_protocol.h"
-#include "doorbell_mqtt.h"
-#include "doorbell_mqtt_contract.h"
-#include "xiaoxin_overview_payload_contract.h"
 #include "assets/lang_config.h"
 #include "mcp_server.h"
 #include "assets.h"
 #include "settings.h"
 #include "boot_diagnostics.h"
 #include "runtime_health.h"
+#include "museum_state.h"
 #include "ota_release_audit.h"
-#include "xiaoxin_event_validation.h"
 
 #include <cstring>
-#include <climits>
-#include <cmath>
 #include <string>
+#include <utility>
 #include <esp_log.h>
 #include <cJSON.h>
 #include <driver/gpio.h>
@@ -29,297 +25,7 @@
 
 #define TAG "Application"
 
-// 常驻门铃 MQTT 客户端（设备空闲/待机时被服务器叫醒用）。激活完成后启动一次。
-static DoorbellMqtt g_doorbell_mqtt;
 static constexpr int64_t kSttThinkingSuppressionWindowUs = 800 * 1000;
-
-static std::string NormalizeXiaoxinDeviceName(std::string text) {
-    const char* variants[] = {"小新", "晓新"};
-    for (const char* variant : variants) {
-        size_t pos = 0;
-        while ((pos = text.find(variant, pos)) != std::string::npos) {
-            text.replace(pos, std::strlen(variant), "小芯");
-            pos += std::strlen("小芯");
-        }
-    }
-    return text;
-}
-
-static const char* JsonStringOrNull(const cJSON* root, const char* name) {
-    cJSON* item = cJSON_GetObjectItem(root, name);
-    return cJSON_IsString(item) ? item->valuestring : nullptr;
-}
-
-static std::string JsonStringOrEmpty(const cJSON* root, const char* name) {
-    const char* value = JsonStringOrNull(root, name);
-    return value != nullptr ? value : "";
-}
-
-static int JsonIntOrDefault(const cJSON* root, const char* name, int fallback) {
-    cJSON* item = cJSON_GetObjectItem(root, name);
-    return cJSON_IsNumber(item) ? item->valueint : fallback;
-}
-
-static bool JsonBoolOrDefault(const cJSON* root, const char* name, bool fallback) {
-    cJSON* item = cJSON_GetObjectItem(root, name);
-    if (cJSON_IsBool(item)) {
-        return cJSON_IsTrue(item);
-    }
-    return fallback;
-}
-
-static constexpr size_t kXiaoxinOverviewTextMaxBytes = 192;
-static constexpr size_t kXiaoxinOverviewBodyMaxBytes = 39;
-static constexpr size_t kXiaoxinOverviewDetailMaxBytes = 63;
-
-static bool IsValidUtf8(const char* text, size_t length) {
-    size_t index = 0;
-    while (index < length) {
-        const unsigned char lead = static_cast<unsigned char>(text[index]);
-        if (lead <= 0x7F) {
-            index++;
-            continue;
-        }
-
-        size_t continuation_count = 0;
-        uint32_t code_point = 0;
-        uint32_t minimum_code_point = 0;
-        if ((lead & 0xE0) == 0xC0) {
-            continuation_count = 1;
-            code_point = lead & 0x1F;
-            minimum_code_point = 0x80;
-        } else if ((lead & 0xF0) == 0xE0) {
-            continuation_count = 2;
-            code_point = lead & 0x0F;
-            minimum_code_point = 0x800;
-        } else if ((lead & 0xF8) == 0xF0) {
-            continuation_count = 3;
-            code_point = lead & 0x07;
-            minimum_code_point = 0x10000;
-        } else {
-            return false;
-        }
-
-        if (index + continuation_count >= length) {
-            return false;
-        }
-        for (size_t offset = 1; offset <= continuation_count; ++offset) {
-            const unsigned char continuation =
-                static_cast<unsigned char>(text[index + offset]);
-            if ((continuation & 0xC0) != 0x80) {
-                return false;
-            }
-            code_point = (code_point << 6) | (continuation & 0x3F);
-        }
-        if (code_point < minimum_code_point || code_point > 0x10FFFF ||
-            (code_point >= 0xD800 && code_point <= 0xDFFF)) {
-            return false;
-        }
-        index += continuation_count + 1;
-    }
-    return true;
-}
-
-static bool JsonRequiredUtf8String(
-    const cJSON* object, const char* name, size_t max_bytes) {
-    const cJSON* item = cJSON_GetObjectItem(object, name);
-    if (!cJSON_IsString(item) || item->valuestring == nullptr) {
-        return false;
-    }
-    const size_t length = std::strlen(item->valuestring);
-    return length <= max_bytes && IsValidUtf8(item->valuestring, length);
-}
-
-static bool JsonRequiredBool(const cJSON* object, const char* name) {
-    return cJSON_IsBool(cJSON_GetObjectItem(object, name));
-}
-
-static bool IsExactJsonIntegerInRange(
-    const cJSON* item, int minimum, int maximum) {
-    if (!cJSON_IsNumber(item) || !std::isfinite(item->valuedouble) ||
-        std::floor(item->valuedouble) != item->valuedouble ||
-        item->valuedouble < static_cast<double>(INT_MIN) ||
-        item->valuedouble > static_cast<double>(INT_MAX)) {
-        return false;
-    }
-    return item->valuedouble >= static_cast<double>(minimum) &&
-           item->valuedouble <= static_cast<double>(maximum);
-}
-
-static bool ValidateXiaoxinOverviewCards(const cJSON* root) {
-    const cJSON* weather = cJSON_GetObjectItem(root, "weather");
-    const cJSON* course = cJSON_GetObjectItem(root, "course");
-    const cJSON* todo = cJSON_GetObjectItem(root, "todo");
-    if (!cJSON_IsObject(weather) || !cJSON_IsObject(course) ||
-        !cJSON_IsObject(todo)) {
-        return false;
-    }
-
-    const bool weather_valid =
-        JsonRequiredBool(weather, "configured") &&
-        JsonRequiredBool(weather, "available") &&
-        JsonRequiredUtf8String(weather, "province", kXiaoxinOverviewTextMaxBytes) &&
-        JsonRequiredUtf8String(weather, "city", kXiaoxinOverviewTextMaxBytes) &&
-        JsonRequiredUtf8String(weather, "date", kXiaoxinOverviewTextMaxBytes) &&
-        JsonRequiredUtf8String(weather, "summary", kXiaoxinOverviewBodyMaxBytes) &&
-        JsonRequiredUtf8String(weather, "detail", kXiaoxinOverviewDetailMaxBytes) &&
-        JsonRequiredUtf8String(weather, "fetched_at", kXiaoxinOverviewTextMaxBytes);
-    const bool course_valid =
-        JsonRequiredBool(course, "configured") &&
-        JsonRequiredBool(course, "available_today") &&
-        JsonRequiredUtf8String(course, "title", kXiaoxinOverviewBodyMaxBytes) &&
-        JsonRequiredUtf8String(course, "detail", kXiaoxinOverviewDetailMaxBytes);
-    const cJSON* todo_count = cJSON_GetObjectItem(todo, "count");
-    const bool todo_valid =
-        JsonRequiredBool(todo, "configured") &&
-        IsExactJsonIntegerInRange(todo_count, 0, 99) &&
-        JsonRequiredUtf8String(todo, "detail", kXiaoxinOverviewDetailMaxBytes);
-    return weather_valid && course_valid && todo_valid;
-}
-
-static bool IsValidIsoDate(const std::string& date) {
-    if (date.size() != 10 || date[4] != '-' || date[7] != '-') {
-        return false;
-    }
-    for (size_t index = 0; index < date.size(); ++index) {
-        if (index == 4 || index == 7) {
-            continue;
-        }
-        if (date[index] < '0' || date[index] > '9') {
-            return false;
-        }
-    }
-
-    const int year = (date[0] - '0') * 1000 + (date[1] - '0') * 100 +
-                     (date[2] - '0') * 10 + (date[3] - '0');
-    const int month = (date[5] - '0') * 10 + (date[6] - '0');
-    const int day = (date[8] - '0') * 10 + (date[9] - '0');
-    if (year == 0 || month < 1 || month > 12) {
-        return false;
-    }
-
-    static constexpr int days_by_month[] = {
-        31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    const bool is_leap_year =
-        (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    int days_in_month = days_by_month[month - 1];
-    if (month == 2 && is_leap_year) {
-        days_in_month = 29;
-    }
-    return day >= 1 && day <= days_in_month;
-}
-
-static bool ValidateUnboundXiaoxinOverviewCards(const cJSON* root) {
-    const cJSON* weather = cJSON_GetObjectItem(root, "weather");
-    const cJSON* course = cJSON_GetObjectItem(root, "course");
-    const cJSON* todo = cJSON_GetObjectItem(root, "todo");
-    return cJSON_IsFalse(cJSON_GetObjectItem(weather, "configured")) &&
-           cJSON_IsFalse(cJSON_GetObjectItem(weather, "available")) &&
-           JsonStringOrEmpty(weather, "province").empty() &&
-           JsonStringOrEmpty(weather, "city").empty() &&
-           IsValidIsoDate(JsonStringOrEmpty(weather, "date")) &&
-           JsonStringOrEmpty(weather, "fetched_at").empty() &&
-           JsonStringOrEmpty(weather, "summary") == "设备未绑定" &&
-           JsonStringOrEmpty(weather, "detail") == "绑定后显示天气" &&
-           cJSON_IsFalse(cJSON_GetObjectItem(course, "configured")) &&
-           cJSON_IsFalse(cJSON_GetObjectItem(course, "available_today")) &&
-           JsonStringOrEmpty(course, "title") == "设备未绑定" &&
-           JsonStringOrEmpty(course, "detail") == "绑定后显示课程" &&
-           cJSON_IsFalse(cJSON_GetObjectItem(todo, "configured")) &&
-           JsonIntOrDefault(todo, "count", -1) == 0 &&
-           JsonStringOrEmpty(todo, "detail") == "绑定后显示待办";
-}
-
-static XiaoxinContractString JsonContractString(
-    const cJSON* object, const char* name) {
-    const cJSON* item = cJSON_GetObjectItem(object, name);
-    return cJSON_IsString(item) && item->valuestring != nullptr
-               ? XiaoxinContractString{true, item->valuestring}
-               : XiaoxinContractString{};
-}
-
-static XiaoxinContractBool JsonContractBool(
-    const cJSON* object, const char* name) {
-    const cJSON* item = cJSON_GetObjectItem(object, name);
-    return {cJSON_IsBool(item) != 0, cJSON_IsTrue(item) != 0};
-}
-
-static XiaoxinContractInt JsonContractInt(
-    const cJSON* object, const char* name) {
-    const cJSON* item = cJSON_GetObjectItem(object, name);
-    if (cJSON_IsNull(item)) {
-        return {true, 0, true};
-    }
-    if (!cJSON_IsNumber(item) || !std::isfinite(item->valuedouble) ||
-        std::floor(item->valuedouble) != item->valuedouble ||
-        item->valuedouble < static_cast<double>(INT_MIN) ||
-        item->valuedouble > static_cast<double>(INT_MAX)) {
-        return {};
-    }
-    return {true, static_cast<int>(item->valuedouble), false};
-}
-
-static XiaoxinOverviewPayloadContract ReadXiaoxinOverviewPayloadContract(
-    const cJSON* root) {
-    XiaoxinOverviewPayloadContract payload;
-    payload.root_object_valid = cJSON_IsObject(root);
-    payload.type = JsonContractString(root, "type");
-    payload.version = JsonContractInt(root, "version");
-    payload.device_id = JsonContractString(root, "device_id");
-    payload.revision = JsonContractInt(root, "revision");
-    payload.generated_at = JsonContractString(root, "generated_at");
-    payload.bound = JsonContractBool(root, "bound");
-    payload.notifications_absent =
-        cJSON_GetObjectItem(root, "notifications") == nullptr;
-
-    const cJSON* weather = cJSON_GetObjectItem(root, "weather");
-    payload.weather.object_valid = cJSON_IsObject(weather);
-    payload.weather.configured = JsonContractBool(weather, "configured");
-    payload.weather.available = JsonContractBool(weather, "available");
-    payload.weather.province = JsonContractString(weather, "province");
-    payload.weather.city = JsonContractString(weather, "city");
-    payload.weather.date = JsonContractString(weather, "date");
-    payload.weather.summary = JsonContractString(weather, "summary");
-    payload.weather.detail = JsonContractString(weather, "detail");
-    payload.weather.fetched_at = JsonContractString(weather, "fetched_at");
-
-    const cJSON* course = cJSON_GetObjectItem(root, "course");
-    payload.course.object_valid = cJSON_IsObject(course);
-    payload.course.configured = JsonContractBool(course, "configured");
-    payload.course.available_today =
-        JsonContractBool(course, "available_today");
-    payload.course.title = JsonContractString(course, "title");
-    payload.course.detail = JsonContractString(course, "detail");
-
-    const cJSON* todo = cJSON_GetObjectItem(root, "todo");
-    payload.todo.object_valid = cJSON_IsObject(todo);
-    payload.todo.configured = JsonContractBool(todo, "configured");
-    payload.todo.count = JsonContractInt(todo, "count");
-    payload.todo.detail = JsonContractString(todo, "detail");
-
-    const cJSON* companion = cJSON_GetObjectItem(root, "companion");
-    payload.companion.object_present = companion != nullptr;
-    payload.companion.object_valid = cJSON_IsObject(companion);
-    payload.companion.xiaoxin_age = JsonContractInt(companion, "xiaoxin_age");
-    payload.companion.academic_stage =
-        JsonContractString(companion, "academic_stage");
-    payload.companion.growth_moment_id =
-        JsonContractString(companion, "growth_moment_id");
-    payload.companion.growth_summary =
-        JsonContractString(companion, "growth_summary");
-    payload.companion.expression = JsonContractString(companion, "expression");
-    return payload;
-}
-
-static const char* RequiredXiaoxinFieldMissing(const cJSON* root) {
-    const char* required[] = {"delivery_id", "event", "title", "body"};
-    for (const char* name : required) {
-        if (JsonStringOrNull(root, name) == nullptr) {
-            return name;
-        }
-    }
-    return nullptr;
-}
 
 Application::Application() {
     event_group_ = xEventGroupCreate();
@@ -544,7 +250,6 @@ void Application::Run() {
         MAIN_EVENT_TOGGLE_CHAT |
         MAIN_EVENT_START_LISTENING |
         MAIN_EVENT_STOP_LISTENING |
-        MAIN_EVENT_NOTIFICATION_WAKE |
         MAIN_EVENT_ACTIVATION_DONE |
         MAIN_EVENT_STATE_CHANGED |
         MAIN_EVENT_TTS_AUDIO_PUMP;
@@ -584,10 +289,6 @@ void Application::Run() {
 
         if (bits & MAIN_EVENT_STOP_LISTENING) {
             HandleStopListeningEvent();
-        }
-
-        if (bits & MAIN_EVENT_NOTIFICATION_WAKE) {
-            HandleNotificationWakeEvent();
         }
 
         if (bits & MAIN_EVENT_SEND_AUDIO) {
@@ -843,7 +544,6 @@ void Application::RunPeriodicOtaCheck() {
 void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
     network_connected_ = true;
-    location_heartbeat_.OnNetworkConnected();
     auto state = GetDeviceState();
 
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
@@ -866,7 +566,6 @@ void Application::HandleNetworkDisconnectedEvent() {
         legacy_tts_active_ = false;
     }
     audio_service_.ResetDecoder();
-    location_heartbeat_.OnNetworkDisconnected();
 
     // Close current conversation when network disconnected
     auto state = GetDeviceState();
@@ -893,16 +592,6 @@ void Application::HandleActivationDoneEvent() {
     std::string message = std::string(Lang::Strings::VERSION) + ota_->GetCurrentVersion();
     display->ShowNotification(message.c_str());
     display->SetChatMessage("system", "");
-
-    const std::string ota_url = ota_->GetCheckVersionUrl();
-    const auto& config = ota_->GetDoorbellMqttConfig();
-    const std::string device_id = SystemInfo::GetMacAddress();
-    location_heartbeat_.Configure(ota_url, device_id, config.username, config.password);
-
-    if (ota_->HasDoorbellMqttConfig() &&
-        IsDoorbellMqttConfigValidForDevice(config, device_id)) {
-        g_doorbell_mqtt.Start(config, device_id);
-    }
 
     if (ota_pending_verification_.load()) {
         ESP_LOGI(TAG, "Pending OTA image will be confirmed after local runtime health is stable");
@@ -964,23 +653,6 @@ void Application::ActivationTask() {
         ESP_LOGW(TAG, "Activation continuing without a successful OTA check");
     }
 
-    const auto& doorbell_config = ota_->GetDoorbellMqttConfig();
-    const std::string device_id = SystemInfo::GetMacAddress();
-    const bool doorbell_configuration_ready =
-        !ota_->HasDoorbellMqttConfig() ||
-        IsDoorbellMqttConfigValidForDevice(doorbell_config, device_id);
-    if (!doorbell_configuration_ready) {
-        BootDiagnosticsMarkError("activation_doorbell_config_invalid", ESP_ERR_INVALID_ARG);
-        ESP_LOGE(TAG, "Activation cannot complete because doorbell MQTT configuration is invalid");
-        return;
-    }
-    const bool mqtt_overview_authoritative =
-        ota_->HasDoorbellMqttConfig() &&
-        doorbell_configuration_ready &&
-        !doorbell_config.overview_topic.empty();
-    overview_authority_.Configure(mqtt_overview_authoritative);
-
-    // Initialize the protocol only after its Overview authority is explicit.
     const bool protocol_started = InitializeProtocol();
     if (!protocol_started) {
         BootDiagnosticsMarkError("activation_protocol_not_ready", ESP_FAIL);
@@ -1160,250 +832,6 @@ void Application::CheckNewVersion() {
             }
         }
     }
-}
-
-void Application::HandleXiaoxinEvent(const cJSON* root) {
-    std::string delivery_id = JsonStringOrEmpty(root, "delivery_id");
-    const char* missing = RequiredXiaoxinFieldMissing(root);
-    if (missing != nullptr) {
-        ESP_LOGW(TAG, "xiaoxin_event missing required field: %s", missing);
-        if (protocol_ != nullptr) {
-            protocol_->SendXiaoxinAck(delivery_id, "failed", "invalid_payload");
-        }
-        return;
-    }
-    if (!IsValidXiaoxinDeliveryId(delivery_id)) {
-        ESP_LOGW(
-            TAG,
-            "xiaoxin_event invalid delivery_id length: %u (max=%u)",
-            static_cast<unsigned>(delivery_id.size()),
-            static_cast<unsigned>(kXiaoxinDeliveryIdMaxLength));
-        if (protocol_ != nullptr) {
-            protocol_->SendXiaoxinAck(
-                delivery_id, "failed", "invalid_payload");
-        }
-        return;
-    }
-
-    std::string event = JsonStringOrEmpty(root, "event");
-    std::string title = JsonStringOrEmpty(root, "title");
-    std::string body = JsonStringOrEmpty(root, "body");
-    std::string tag = JsonStringOrEmpty(root, "tag");
-    const int priority = JsonIntOrDefault(root, "priority", 2);
-    const int ttl_ms = JsonIntOrDefault(root, "ttl_ms", 0);
-
-    if (event != "notification" &&
-        event != "course_reminder" &&
-        event != "todo_reminder") {
-        ESP_LOGW(TAG, "xiaoxin_event unsupported event: %s", event.c_str());
-        if (protocol_ != nullptr) {
-            protocol_->SendXiaoxinAck(delivery_id, "failed", "invalid_payload");
-        }
-        return;
-    }
-
-    auto display = Board::GetInstance().GetDisplay();
-    std::string notification_id = std::string("xiaoxin_event:") + delivery_id;
-    Schedule([display,
-              notification_id = std::move(notification_id),
-              event = std::move(event),
-              title = std::move(title),
-              body = std::move(body),
-              tag = std::move(tag),
-              priority,
-              ttl_ms]() {
-        bool shown = display->UpsertNotification(
-            notification_id.c_str(),
-            title.c_str(),
-            body.c_str(),
-            tag.empty() ? nullptr : tag.c_str(),
-            priority,
-            ttl_ms,
-            event.c_str()
-        );
-        if (!shown) {
-            display->ShowNotification(body.c_str(), ttl_ms > 0 ? ttl_ms : 8000);
-        }
-    });
-    if (protocol_ != nullptr) {
-        protocol_->SendXiaoxinAck(delivery_id, "device_received");
-    }
-}
-
-void Application::HandleXiaoxinOverviewUpdate(const cJSON* root,
-                                              XiaoxinOverviewSource source,
-                                              int revision) {
-    if (!overview_authority_.Allows(source)) {
-        ESP_LOGI(TAG, "xiaoxin overview ignored, result=non_authoritative_source");
-        return;
-    }
-
-    const cJSON* weather = cJSON_GetObjectItem(root, "weather");
-    const cJSON* course = cJSON_GetObjectItem(root, "course");
-    const cJSON* todo = cJSON_GetObjectItem(root, "todo");
-    const cJSON* companion = cJSON_GetObjectItem(root, "companion");
-    const cJSON* notifications = cJSON_GetObjectItem(root, "notifications");
-    if (!cJSON_IsObject(weather) || !cJSON_IsObject(course) || !cJSON_IsObject(todo)) {
-        ESP_LOGW(TAG, "xiaoxin_overview_update missing weather/course/todo object");
-        return;
-    }
-
-    int todo_count = JsonIntOrDefault(todo, "count", 0);
-    if (todo_count < 0) {
-        todo_count = 0;
-    } else if (todo_count > 99) {
-        todo_count = 99;
-    }
-
-    const std::string weather_summary = JsonStringOrEmpty(weather, "summary");
-    const std::string weather_detail = JsonStringOrEmpty(weather, "detail");
-    const std::string course_title = JsonStringOrEmpty(course, "title");
-    const std::string course_detail = JsonStringOrEmpty(course, "detail");
-    const std::string todo_detail = JsonStringOrEmpty(todo, "detail");
-    int xiaoxin_age = JsonIntOrDefault(companion, "xiaoxin_age", 0);
-    if (xiaoxin_age < 1 || xiaoxin_age > 4) {
-        xiaoxin_age = 0;
-    }
-    const bool companion_available = cJSON_IsObject(companion) && xiaoxin_age > 0;
-    const std::string growth_summary =
-        companion_available ? JsonStringOrEmpty(companion, "growth_summary") : "";
-
-    ESP_LOGI(TAG, "xiaoxin overview apply queued, source=%s revision=%d",
-             source == XiaoxinOverviewSource::kMqtt ? "mqtt" : "websocket",
-             revision);
-
-    auto display = Board::GetInstance().GetDisplay();
-    Schedule([display,
-              weather_configured = JsonBoolOrDefault(weather, "configured", false),
-              weather_available = JsonBoolOrDefault(weather, "available", false),
-              weather_summary,
-              weather_detail,
-              course_configured = JsonBoolOrDefault(course, "configured", false),
-              course_available_today = JsonBoolOrDefault(course, "available_today", false),
-              course_title,
-              course_detail,
-              todo_configured = JsonBoolOrDefault(todo, "configured", false),
-              todo_count = static_cast<uint8_t>(todo_count),
-              todo_detail,
-              companion_available,
-              xiaoxin_age = static_cast<uint8_t>(xiaoxin_age),
-              growth_summary]() {
-        display->UpdateOverviewData(
-            weather_configured,
-            weather_available,
-            weather_summary.c_str(),
-            weather_detail.c_str(),
-            course_configured,
-            course_available_today,
-            course_title.c_str(),
-            course_detail.c_str(),
-            todo_configured,
-            todo_count,
-            todo_detail.c_str(),
-            companion_available,
-            xiaoxin_age,
-            growth_summary.c_str()
-        );
-    });
-
-    if (!cJSON_IsArray(notifications)) {
-        return;
-    }
-
-    uint8_t notification_index = 0;
-    cJSON* notification = nullptr;
-    cJSON_ArrayForEach(notification, notifications) {
-        if (!cJSON_IsObject(notification)) {
-            continue;
-        }
-
-        std::string event = JsonStringOrEmpty(notification, "event");
-        if (event.empty()) {
-            event = "notification";
-        }
-        std::string id = JsonStringOrEmpty(notification, "id");
-        if (id.empty()) {
-            id = std::to_string(notification_index);
-        }
-        notification_index++;
-
-        std::string notification_id = std::string("xiaoxin_event:") + id;
-        std::string title = JsonStringOrEmpty(notification, "title");
-        std::string body = JsonStringOrEmpty(notification, "body");
-        std::string tag = JsonStringOrEmpty(notification, "tag");
-
-        int priority = JsonIntOrDefault(notification, "priority", 2);
-        if (priority < 0) {
-            priority = 0;
-        }
-        int ttl_ms = JsonIntOrDefault(notification, "ttl_ms", 0);
-        if (ttl_ms < 0) {
-            ttl_ms = 0;
-        }
-
-        Schedule([display,
-                  notification_id = std::move(notification_id),
-                  event = std::move(event),
-                  title = std::move(title),
-                  body = std::move(body),
-                  tag = std::move(tag),
-                  priority,
-                  ttl_ms]() {
-            bool shown = display->UpsertNotification(
-                notification_id.c_str(),
-                title.c_str(),
-                body.c_str(),
-                tag.empty() ? nullptr : tag.c_str(),
-                static_cast<uint32_t>(priority),
-                static_cast<uint32_t>(ttl_ms),
-                event.c_str()
-            );
-            if (!shown && !body.empty()) {
-                display->ShowNotification(body.c_str(), ttl_ms > 0 ? ttl_ms : 8000);
-            }
-        });
-    }
-}
-
-void Application::HandleXiaoxinOverviewMqttMessage(
-    const std::string& payload,
-    const std::string& expected_device) {
-    if (payload.empty() || payload.size() > 2048 || expected_device.empty() ||
-        payload.find('\0') != std::string::npos ||
-        payload.find("\\u0000") != std::string::npos) {
-        return;
-    }
-
-    const char* parse_end = nullptr;
-    std::unique_ptr<cJSON, decltype(&cJSON_Delete)> root_holder(
-        cJSON_ParseWithLengthOpts(
-            payload.data(), payload.size(), &parse_end, false),
-        &cJSON_Delete);
-    cJSON* root = root_holder.get();
-    if (!cJSON_IsObject(root)) {
-        return;
-    }
-    const char* payload_end = payload.data() + payload.size();
-    while (parse_end < payload_end &&
-           (*parse_end == ' ' || *parse_end == '\t' ||
-            *parse_end == '\r' || *parse_end == '\n')) {
-        ++parse_end;
-    }
-    if (parse_end != payload_end) {
-        return;
-    }
-
-    const XiaoxinOverviewPayloadContract contract =
-        ReadXiaoxinOverviewPayloadContract(root);
-    if (!ValidateXiaoxinOverviewPayloadContract(
-            contract, expected_device,
-            overview_authority_.last_overview_revision_)) {
-        return;
-    }
-
-    const int revision = contract.revision.value;
-    HandleXiaoxinOverviewUpdate(root, XiaoxinOverviewSource::kMqtt, revision);
-    overview_authority_.CommitMqttRevision(revision);
 }
 
 bool Application::ProbeOtaTransportHealth() {
@@ -1595,7 +1023,7 @@ bool Application::InitializeProtocol() {
             auto text = cJSON_GetObjectItem(root, "text");
             if (cJSON_IsString(text)) {
                 ESP_LOGI(TAG, ">> %s", text->valuestring);
-                Schedule([this, display, message = NormalizeXiaoxinDeviceName(std::string(text->valuestring))]() {
+                Schedule([this, display, message = std::string(text->valuestring)]() {
                     if (GetDeviceState() == kDeviceStateListening && !IsSttThinkingSuppressed()) {
                         SetDeviceState(kDeviceStateThinking);
                     }
@@ -1609,24 +1037,19 @@ bool Application::InitializeProtocol() {
                     display->SetEmotion(emotion_str.c_str());
                 });
             }
-        } else if (strcmp(type->valuestring, "notification") == 0) {
-            // 服务器主动下发的屏幕通知文字（门铃唤醒后经 WebSocket 送达）。
-            auto text = cJSON_GetObjectItem(root, "text");
-            if (cJSON_IsString(text)) {
-                auto duration = cJSON_GetObjectItem(root, "duration_ms");
-                int duration_ms = cJSON_IsNumber(duration) ? duration->valueint : 3000;
-                ESP_LOGI(TAG, "Notification: %s", text->valuestring);
-                Schedule([display, message = std::string(text->valuestring), duration_ms]() {
-                    display->ShowNotification(message.c_str(), duration_ms);
-                });
-            } else {
-                ESP_LOGW(TAG, "Notification message missing 'text'");
+        } else if (strcmp(type->valuestring, "museum_state") == 0) {
+            MuseumState state;
+            std::string error;
+            if (!ParseMuseumState(root, &state, &error)) {
+                ESP_LOGW(TAG, "museum_state rejected: %s", error.c_str());
+                return;
             }
-        } else if (strcmp(type->valuestring, "xiaoxin_event") == 0) {
-            HandleXiaoxinEvent(root);
-        } else if (strcmp(type->valuestring, "xiaoxin_overview_update") == 0) {
-            HandleXiaoxinOverviewUpdate(
-                root, XiaoxinOverviewSource::kWebSocket, 0);
+            ESP_LOGI(TAG, "museum_state exhibit=%s status=%s", state.exhibit_id.c_str(),
+                     state.grounding_status.c_str());
+            std::string display_text = BuildMuseumStateDisplayText(state);
+            Schedule([display, message = std::move(display_text)]() {
+                display->SetMuseumState(message.c_str());
+            });
         } else if (strcmp(type->valuestring, "mcp") == 0) {
             auto payload = cJSON_GetObjectItem(root, "payload");
             if (cJSON_IsObject(payload)) {
@@ -1692,11 +1115,7 @@ void Application::HandleReliableTtsStart(const std::string& sentence_id) {
                 tts_playback_session_.phase() != TtsPlaybackPhase::kIdle;
             std::optional<TtsReturnState> explicit_return_state = std::nullopt;
             const DeviceState state = GetDeviceState();
-            if ((state == kDeviceStateIdle ||
-                 state == kDeviceStateConnecting) &&
-                notification_tts_origin_.ConsumeForTtsStart()) {
-                explicit_return_state = TtsReturnState::kIdle;
-            } else if (!session_active) {
+            if (!session_active) {
                 explicit_return_state = ReliableTtsReturnStateForStart();
             }
             decision =
@@ -2067,10 +1486,6 @@ void Application::StopListening() {
     xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_LISTENING);
 }
 
-void Application::WakeForNotification() {
-    xEventGroupSetBits(event_group_, MAIN_EVENT_NOTIFICATION_WAKE);
-}
-
 void Application::HandleToggleChatEvent() {
     auto state = GetDeviceState();
     
@@ -2136,77 +1551,6 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
     }
 
     SetListeningMode(mode);
-}
-
-void Application::HandleNotificationWakeEvent() {
-    if (!protocol_) {
-        ESP_LOGE(TAG, "Protocol not initialized");
-        return;
-    }
-
-    auto state = GetDeviceState();
-    if (state != kDeviceStateIdle) {
-        ESP_LOGI(TAG, "Notification wake ignored; device not idle");
-        return;
-    }
-
-    if (!protocol_->IsAudioChannelOpened()) {
-        NotificationTtsOrigin::Token notification_token;
-        {
-            std::lock_guard<std::mutex> control_lock(tts_control_mutex_);
-            notification_token = notification_tts_origin_.BeginOpenIntent();
-        }
-        SetDeviceState(kDeviceStateConnecting);
-        ScheduleAudioOpenRequest([this, notification_token]() {
-            ContinueOpenNotificationChannel(notification_token);
-        });
-        return;
-    }
-}
-
-void Application::ContinueOpenNotificationChannel(
-    NotificationTtsOrigin::Token notification_token) {
-    {
-        std::lock_guard<std::mutex> control_lock(tts_control_mutex_);
-        if (!notification_tts_origin_.IsCurrent(notification_token)) {
-            return;
-        }
-    }
-    if (DeferUntilTtsCleanupComplete([this, notification_token]() {
-            ContinueOpenNotificationChannel(notification_token);
-        })) {
-        return;
-    }
-    ConsumeAudioOpenRequest();
-    // Notification wake only connects WS. It must not enter listening or send microphone audio.
-    if (GetDeviceState() != kDeviceStateConnecting) {
-        std::lock_guard<std::mutex> control_lock(tts_control_mutex_);
-        notification_tts_origin_.ClearOpenIntent(notification_token);
-        return;
-    }
-
-    if (!protocol_->IsAudioChannelOpened()) {
-        if (!protocol_->OpenAudioChannel()) {
-            SetDeviceState(kDeviceStateIdle);
-            {
-                std::lock_guard<std::mutex> control_lock(tts_control_mutex_);
-                notification_tts_origin_.ClearOpenIntent(notification_token);
-            }
-            return;
-        }
-    }
-
-    if (DeferUntilTtsCleanupComplete([this, notification_token]() {
-            ContinueOpenNotificationChannel(notification_token);
-        })) {
-        return;
-    }
-
-    SetDeviceState(kDeviceStateIdle);
-    {
-        std::lock_guard<std::mutex> control_lock(tts_control_mutex_);
-        notification_tts_origin_.ClearOpenIntent(notification_token);
-    }
 }
 
 void Application::HandleStartListeningEvent() {
@@ -2334,7 +1678,7 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
     ESP_LOGI(TAG, "Wake word detected: %s", wake_word.c_str());
 #if CONFIG_SEND_WAKE_WORD_DATA
     // Keep the captured wake audio for server-side compatibility, then send the
-    // structured wake-word text so Xiaoxin-specific handlers still have context.
+    // structured wake-word text so the museum voice service can use the context.
     while (auto packet = audio_service_.PopWakeWordPacket()) {
         protocol_->SendAudio(std::move(packet));
     }
@@ -2403,6 +1747,7 @@ void Application::HandleStateChangedEvent() {
             display->SetChatMessage("system", "");
             break;
         case kDeviceStateListening:
+            display->ClearChatMessages();
             display->SetStatus(Lang::Strings::LISTENING);
             display->SetEmotion("neutral");
 
