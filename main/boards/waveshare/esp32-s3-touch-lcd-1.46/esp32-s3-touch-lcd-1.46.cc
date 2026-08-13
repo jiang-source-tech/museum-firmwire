@@ -2,6 +2,7 @@
 #include "codecs/no_audio_codec.h"
 #include "display/display.h"
 #include "display/lcd_display.h"
+#include "display/lvgl_display/gif/lvgl_gif.h"
 #include "display/lvgl_display/lvgl_theme.h"
 #include "system_reset.h"
 #include "application.h"
@@ -17,6 +18,7 @@
 #include <esp_check.h>
 #include <esp_app_desc.h>
 #include <esp_console.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_rom_sys.h>
 #include <esp_adc/adc_cali.h>
@@ -44,6 +46,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <memory>
 #include <time.h>
 
 extern "C" {
@@ -58,12 +61,22 @@ extern "C" {
 LV_FONT_DECLARE(font_puhui_basic_30_4);
 LV_FONT_DECLARE(font_puhui_basic_20_4);
 
+extern const uint8_t assets_images_idle_gif_start[] asm("_binary_idle_gif_start");
+extern const uint8_t assets_images_idle_gif_end[] asm("_binary_idle_gif_end");
+extern const uint8_t assets_images_speaking_fixed_gif_start[] asm("_binary_speaking_fixed_gif_start");
+extern const uint8_t assets_images_speaking_fixed_gif_end[] asm("_binary_speaking_fixed_gif_end");
+
 class CustomBoard;
 static PowerSaveTimer* TargetPowerSaveTimer();
 static void WakePowerSaveTimerFromTouch();
 static void RequestSettingsWifiConfigFromSettingsPage();
 static constexpr uint32_t k_touch_poll_ms = 16;
 static constexpr uint32_t k_ui_render_task_stack_bytes = 8 * 1024;
+static constexpr uint16_t k_white_rgb565 = 0xFFFF;
+static constexpr uint32_t k_interaction_scale_base = LV_SCALE_NONE;
+static constexpr uint16_t k_interaction_target_visual_longest = 243;
+static constexpr uint16_t k_idle_visual_longest = 162;
+static constexpr uint16_t k_speaking_visual_longest = 182;
 static constexpr uint32_t k_power_off_release_poll_ms = 20;
 static constexpr adc_channel_t k_battery_adc_channel = ADC_CHANNEL_7;
 static constexpr int k_battery_voltage_divider = 3;
@@ -363,6 +376,7 @@ public:
             lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
         }
 
+        InitializeInteractionDisplayLocked();
         InitializeMuseumStateLayerLocked();
         InitializeLowPowerClockLayerLocked();
         InitializeLowPowerClockRefreshTimer();
@@ -400,6 +414,13 @@ public:
 
     virtual void SetEmotion(const char* emotion) override {
         (void)emotion;
+        DisplayLockGuard lock(this);
+        SetInteractionStateLocked(
+            Application::GetInstance().GetDeviceState() == kDeviceStateSpeaking
+                ? InteractionState::Speaking
+                : InteractionState::Idle
+        );
+        RaiseOverlayObjects();
     }
 
     virtual void SetMuseumState(const char* text) override {
@@ -414,8 +435,7 @@ public:
             return;
         }
         lv_label_set_text(museum_state_label_, text);
-        lv_obj_clear_flag(museum_state_layer_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(museum_state_layer_);
+        lv_obj_add_flag(museum_state_layer_, LV_OBJ_FLAG_HIDDEN);
         RaiseOverlayObjects();
     }
 
@@ -425,9 +445,14 @@ public:
         }
         LcdDisplay::SetChatMessage(role, content);
         DisplayLockGuard lock(this);
-        if (content[0] != '\0' && museum_state_layer_ != nullptr) {
+        if (museum_state_layer_ != nullptr) {
             lv_obj_add_flag(museum_state_layer_, LV_OBJ_FLAG_HIDDEN);
         }
+        SetInteractionStateLocked(
+            Application::GetInstance().GetDeviceState() == kDeviceStateSpeaking
+                ? InteractionState::Speaking
+                : InteractionState::Idle
+        );
         RaiseOverlayObjects();
     }
 
@@ -437,9 +462,14 @@ public:
         }
         LcdDisplay::UpdateChatMessage(role, content);
         DisplayLockGuard lock(this);
-        if (content[0] != '\0' && museum_state_layer_ != nullptr) {
+        if (museum_state_layer_ != nullptr) {
             lv_obj_add_flag(museum_state_layer_, LV_OBJ_FLAG_HIDDEN);
         }
+        SetInteractionStateLocked(
+            Application::GetInstance().GetDeviceState() == kDeviceStateSpeaking
+                ? InteractionState::Speaking
+                : InteractionState::Idle
+        );
         RaiseOverlayObjects();
     }
 
@@ -447,9 +477,7 @@ public:
         LcdDisplay::ClearChatMessages();
         {
             DisplayLockGuard lock(this);
-            if (museum_state_layer_ != nullptr) {
-                lv_obj_clear_flag(museum_state_layer_, LV_OBJ_FLAG_HIDDEN);
-            }
+            SetInteractionStateLocked(InteractionState::Idle);
             RaiseOverlayObjects();
         }
     }
@@ -590,8 +618,19 @@ public:
     }
 
 private:
+    enum class InteractionState {
+        Idle,
+        Speaking,
+    };
+
     TaskHandle_t render_task_ = nullptr;
     esp_timer_handle_t low_power_clock_timer_ = nullptr;
+    lv_obj_t* interaction_image_ = nullptr;
+    lv_img_dsc_t interaction_frame_dsc_ = {};
+    uint16_t* interaction_frame_buffer_ = nullptr;
+    lv_img_dsc_t interaction_source_dsc_ = {};
+    std::unique_ptr<LvglGif> interaction_gif_;
+    InteractionState interaction_state_ = InteractionState::Idle;
     lv_obj_t* museum_state_layer_ = nullptr;
     lv_obj_t* museum_state_label_ = nullptr;
     lv_obj_t* settings_layer_ = nullptr;
@@ -1856,8 +1895,180 @@ private:
         }
     }
 
+    static uint32_t InteractionImageScale(InteractionState state) {
+        const uint16_t visual_longest = state == InteractionState::Speaking
+            ? k_speaking_visual_longest
+            : k_idle_visual_longest;
+        return ((static_cast<uint32_t>(k_interaction_target_visual_longest) *
+                 k_interaction_scale_base) + visual_longest / 2) / visual_longest;
+    }
+
+    void InitializeInteractionDisplayLocked() {
+        if (interaction_image_ != nullptr) {
+            return;
+        }
+
+        const size_t frame_bytes = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
+        interaction_frame_buffer_ = static_cast<uint16_t*>(
+            heap_caps_malloc(frame_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+        );
+        if (interaction_frame_buffer_ == nullptr) {
+            interaction_frame_buffer_ = static_cast<uint16_t*>(
+                heap_caps_malloc(frame_bytes, MALLOC_CAP_8BIT)
+            );
+        }
+        if (interaction_frame_buffer_ == nullptr) {
+            ESP_LOGE(TAG, "Failed to allocate museum interaction frame buffer");
+            return;
+        }
+
+        std::fill_n(interaction_frame_buffer_, DISPLAY_WIDTH * DISPLAY_HEIGHT, k_white_rgb565);
+        interaction_frame_dsc_ = {};
+        interaction_frame_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        interaction_frame_dsc_.header.flags = LV_IMAGE_FLAGS_MODIFIABLE;
+        interaction_frame_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
+        interaction_frame_dsc_.header.w = DISPLAY_WIDTH;
+        interaction_frame_dsc_.header.h = DISPLAY_HEIGHT;
+        interaction_frame_dsc_.header.stride = DISPLAY_WIDTH * sizeof(uint16_t);
+        interaction_frame_dsc_.data_size = frame_bytes;
+        interaction_frame_dsc_.data = reinterpret_cast<const uint8_t*>(interaction_frame_buffer_);
+
+        lv_obj_t* screen = lv_screen_active();
+        interaction_image_ = lv_image_create(screen);
+        lv_image_set_src(interaction_image_, &interaction_frame_dsc_);
+        lv_image_set_scale(interaction_image_, LV_SCALE_NONE);
+        lv_obj_align(interaction_image_, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_move_to_index(interaction_image_, 1);
+        PlayInteractionGifLocked(InteractionState::Idle);
+    }
+
+    void SetInteractionStateLocked(InteractionState state) {
+        if (interaction_image_ == nullptr) {
+            InitializeInteractionDisplayLocked();
+        }
+        if (interaction_gif_ != nullptr && interaction_state_ == state) {
+            lv_obj_remove_flag(interaction_image_, LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
+        PlayInteractionGifLocked(state);
+    }
+
+    void CopyInteractionFrameToScreen(const lv_img_dsc_t* frame, uint32_t image_scale) {
+        if (interaction_frame_buffer_ == nullptr || frame == nullptr || frame->data == nullptr) {
+            return;
+        }
+
+        std::fill_n(interaction_frame_buffer_, DISPLAY_WIDTH * DISPLAY_HEIGHT, k_white_rgb565);
+
+        const uint16_t src_w = frame->header.w;
+        const uint16_t src_h = frame->header.h;
+        if (src_w == 0 || src_h == 0 || image_scale == 0) {
+            return;
+        }
+
+        const uint32_t draw_w = (static_cast<uint32_t>(src_w) * image_scale + 128) / 256;
+        const uint32_t draw_h = (static_cast<uint32_t>(src_h) * image_scale + 128) / 256;
+        if (draw_w == 0 || draw_h == 0) {
+            return;
+        }
+
+        const int32_t dst_start_x = (static_cast<int32_t>(DISPLAY_WIDTH) -
+                                     static_cast<int32_t>(draw_w)) / 2;
+        const int32_t dst_start_y = (static_cast<int32_t>(DISPLAY_HEIGHT) -
+                                     static_cast<int32_t>(draw_h)) / 2;
+        const uint16_t* src = reinterpret_cast<const uint16_t*>(frame->data);
+        const size_t src_stride_pixels = frame->header.stride / sizeof(uint16_t);
+
+        for (uint32_t dy = 0; dy < draw_h; ++dy) {
+            const int32_t screen_y = dst_start_y + static_cast<int32_t>(dy);
+            if (screen_y < 0 || screen_y >= DISPLAY_HEIGHT) {
+                continue;
+            }
+            const uint32_t sy = (dy * 256) / image_scale;
+            if (sy >= src_h) {
+                continue;
+            }
+            for (uint32_t dx = 0; dx < draw_w; ++dx) {
+                const int32_t screen_x = dst_start_x + static_cast<int32_t>(dx);
+                if (screen_x < 0 || screen_x >= DISPLAY_WIDTH) {
+                    continue;
+                }
+                const uint32_t sx = (dx * 256) / image_scale;
+                if (sx >= src_w) {
+                    continue;
+                }
+                interaction_frame_buffer_[screen_y * DISPLAY_WIDTH + screen_x] =
+                    src[sy * src_stride_pixels + sx];
+            }
+        }
+    }
+
+    void PlayInteractionGifLocked(InteractionState state) {
+        const uint8_t* start = state == InteractionState::Speaking
+            ? assets_images_speaking_fixed_gif_start
+            : assets_images_idle_gif_start;
+        const uint8_t* end = state == InteractionState::Speaking
+            ? assets_images_speaking_fixed_gif_end
+            : assets_images_idle_gif_end;
+        const char* name = state == InteractionState::Speaking ? "speaking" : "idle";
+        const size_t size = static_cast<size_t>(end - start);
+        if (interaction_image_ == nullptr || interaction_frame_buffer_ == nullptr || size == 0) {
+            return;
+        }
+
+        if (interaction_gif_ != nullptr) {
+            interaction_gif_->Stop();
+            interaction_gif_.reset();
+        }
+
+        interaction_source_dsc_ = {};
+        interaction_source_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        interaction_source_dsc_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;
+        interaction_source_dsc_.data_size = size;
+        interaction_source_dsc_.data = start;
+
+        interaction_gif_ = std::make_unique<LvglGif>(
+            &interaction_source_dsc_,
+            true,
+            0xFFFFFF,
+            true
+        );
+        if (!interaction_gif_->IsLoaded()) {
+            ESP_LOGE(TAG, "Failed to load museum interaction GIF: %s", name);
+            interaction_gif_.reset();
+            return;
+        }
+
+        const uint32_t image_scale = InteractionImageScale(state);
+        interaction_gif_->SetFrameCallback([this, image_scale]() {
+            if (interaction_image_ != nullptr && interaction_gif_ != nullptr) {
+                CopyInteractionFrameToScreen(interaction_gif_->image_dsc(), image_scale);
+                lv_image_set_src(interaction_image_, &interaction_frame_dsc_);
+                lv_obj_invalidate(interaction_image_);
+            }
+        });
+        CopyInteractionFrameToScreen(interaction_gif_->image_dsc(), image_scale);
+        lv_image_set_src(interaction_image_, &interaction_frame_dsc_);
+        lv_image_set_scale(interaction_image_, LV_SCALE_NONE);
+        lv_obj_align(interaction_image_, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_remove_flag(interaction_image_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_invalidate(interaction_image_);
+        interaction_state_ = state;
+        interaction_gif_->Start();
+        ESP_LOGI(
+            TAG,
+            "Playing museum interaction GIF: %s size=%u scale=%u",
+            name,
+            static_cast<unsigned>(size),
+            static_cast<unsigned>(image_scale)
+        );
+    }
+
     void RaiseOverlayObjects() {
         HideLegacyLowBatteryPopupLocked();
+        if (interaction_image_ != nullptr) {
+            lv_obj_move_foreground(interaction_image_);
+        }
         if (museum_state_layer_ != nullptr &&
             !lv_obj_has_flag(museum_state_layer_, LV_OBJ_FLAG_HIDDEN)) {
             lv_obj_move_foreground(museum_state_layer_);

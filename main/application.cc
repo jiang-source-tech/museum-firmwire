@@ -3,7 +3,6 @@
 #include "display.h"
 #include "system_info.h"
 #include "audio_codec.h"
-#include "mqtt_protocol.h"
 #include "websocket_protocol.h"
 #include "assets/lang_config.h"
 #include "mcp_server.h"
@@ -870,14 +869,13 @@ bool Application::InitializeProtocol() {
     BootDiagnosticsMark("protocol_initialize_start");
     display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
 
-    if (ota_->HasMqttConfig()) {
-        protocol_ = std::make_unique<MqttProtocol>();
-    } else if (ota_->HasWebsocketConfig()) {
-        protocol_ = std::make_unique<WebsocketProtocol>();
-    } else {
-        ESP_LOGW(TAG, "No protocol specified in the OTA config, using MQTT");
-        protocol_ = std::make_unique<MqttProtocol>();
+    if (!ota_->HasWebsocketConfig()) {
+        ESP_LOGE(TAG, "OTA response does not contain a valid museum WebSocket config");
+        protocol_.reset();
+        return false;
     }
+    protocol_ = std::make_unique<WebsocketProtocol>();
+    ESP_LOGI(TAG, "Using museum WebSocket transport");
 
     protocol_->OnConnected([this]() {
         ota_transport_connected_ = true;
@@ -1786,6 +1784,7 @@ void Application::HandleStateChangedEvent() {
             break;
         case kDeviceStateSpeaking:
             display->SetStatus(Lang::Strings::SPEAKING);
+            display->SetEmotion("speaking");
 
             if (listening_mode_ != kListeningModeRealtime) {
                 audio_service_.EnableVoiceProcessing(false);

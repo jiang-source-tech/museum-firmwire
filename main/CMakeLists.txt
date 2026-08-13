@@ -361,6 +361,10 @@ elseif(CONFIG_BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_LCD_1_46)
     set(BUILTIN_TEXT_FONT font_puhui_16_4)
     set(BUILTIN_ICON_FONT font_awesome_16_4)
     set(DEFAULT_EMOJI_COLLECTION twemoji_64)
+    set(MUSEUM_INTERACTION_GIF_FILES
+        assets/images/idle.gif
+        assets/images/speaking_fixed.gif
+    )
 elseif(CONFIG_BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_LCD_3_5)
     set(MANUFACTURER "waveshare")
     set(BOARD_TYPE "esp32-s3-touch-lcd-3.5")
@@ -916,7 +920,7 @@ if(CONFIG_IDF_TARGET_ESP32S3)
 endif()
 
 idf_component_register(SRCS ${SOURCES}
-                    EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
+                    EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS} ${MUSEUM_INTERACTION_GIF_FILES}
                     INCLUDE_DIRS ${INCLUDE_DIRS}
                     WHOLE_ARCHIVE
                     PRIV_REQUIRES
