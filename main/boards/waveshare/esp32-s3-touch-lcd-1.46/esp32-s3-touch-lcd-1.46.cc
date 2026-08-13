@@ -3115,6 +3115,54 @@ private:
         };
         ESP_ERROR_CHECK(esp_console_cmd_register(&museum_listen_cmd));
 
+        const esp_console_cmd_t museum_ask_cmd = {
+            .command = "museum_ask",
+            .help = "send text through museum chat; use hex:<utf8-hex> for non-ASCII text",
+            .hint = "<text|hex:utf8-hex>",
+            .func = nullptr,
+            .argtable = nullptr,
+            .func_w_context = [](void* context, int argc, char** argv) -> int {
+                (void)context;
+                if (argc < 2) {
+                    printf("usage: museum_ask <text>\n");
+                    return 1;
+                }
+
+                std::string text = argv[1];
+                for (int i = 2; i < argc; ++i) {
+                    text.append(" ");
+                    text.append(argv[i]);
+                }
+                if (text.rfind("hex:", 0) == 0) {
+                    const std::string hex = text.substr(4);
+                    if (hex.empty() || hex.size() % 2 != 0) {
+                        printf("museum_ask: invalid UTF-8 hex length\n");
+                        return 1;
+                    }
+
+                    std::string decoded;
+                    decoded.reserve(hex.size() / 2);
+                    for (size_t i = 0; i < hex.size(); i += 2) {
+                        char byte_text[3] = {hex[i], hex[i + 1], '\0'};
+                        char* end = nullptr;
+                        const long value = std::strtol(byte_text, &end, 16);
+                        if (end == nullptr || *end != '\0') {
+                            printf("museum_ask: invalid UTF-8 hex at offset %u\n",
+                                   static_cast<unsigned>(i));
+                            return 1;
+                        }
+                        decoded.push_back(static_cast<char>(value));
+                    }
+                    text = std::move(decoded);
+                }
+                Application::GetInstance().WakeWordInvoke(text);
+                printf("museum_ask: sent text: %s\n", text.c_str());
+                return 0;
+            },
+            .context = this,
+        };
+        ESP_ERROR_CHECK(esp_console_cmd_register(&museum_ask_cmd));
+
         const esp_console_cmd_t boot_diag_cmd = {
             .command = "boot_diag",
             .help = "print previous boot and current boot diagnostics",
@@ -3257,7 +3305,7 @@ private:
             return;
         }
 
-        ESP_LOGI(TAG, "Debug console started. Use `museum_listen` to start the museum audio path.");
+        ESP_LOGI(TAG, "Debug console started. Use `museum_listen` or `museum_ask <text>`.");
     }
 
     void ScheduleDeferredDebugConsole() {
